@@ -1,0 +1,234 @@
+/* Mailing List Component Styles */
+
+.mailing-list {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  padding: 3rem 2rem;
+  border-radius: 12px;
+  margin: 2rem 0;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e9ecef;
+}
+
+.mailing-list-content {
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.mailing-list h3 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 1rem;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.mailing-list p {
+  font-size: 1.1rem;
+  color: #6c757d;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.mailing-list-form {
+  margin-bottom: 2rem;
+}
+
+.form-group {
+  display: flex;
+  gap: 1rem;
+  max-width: 400px;
+  margin: 0 auto;
+  flex-wrap: wrap;
+}
+
+.email-input {
+  flex: 1;
+  padding: 1rem 1.5rem;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  background: white;
+  min-width: 250px;
+}
+
+.email-input:focus {
+  outline: none;
+  border-color: #FFD700;
+  box-shadow: 0 0 0 3px rgba(255, 215, 0, 0.1);
+}
+
+.subscribe-btn {
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.subscribe-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.mailing-list-benefits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.benefit-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s ease;
+}
+
+.benefit-item:hover {
+  transform: translateY(-2px);
+}
+
+.benefit-icon {
+  font-size: 1.2rem;
+}
+
+.benefit-item span:last-child {
+  font-size: 0.9rem;
+  color: #495057;
+  font-weight: 500;
+}
+
+.privacy-note {
+  font-size: 0.85rem;
+  color: #6c757d;
+  margin: 0;
+  font-style: italic;
+}
+
+/* Success State */
+.mailing-list-success {
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  padding: 3rem 2rem;
+  border-radius: 12px;
+  margin: 2rem 0;
+  text-align: center;
+  border: 1px solid #c3e6cb;
+}
+
+.success-icon {
+  font-size: 3rem;
+  color: #28a745;
+  margin-bottom: 1rem;
+  font-weight: bold;
+}
+
+.mailing-list-success h3 {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #155724;
+  margin-bottom: 1rem;
+}
+
+.mailing-list-success p {
+  font-size: 1.1rem;
+  color: #155724;
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+/* Button Styles */
+.btn {
+  display: inline-block;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+  cursor: pointer;
+  text-align: center;
+}
+
+.btn-primary {
+  background: #FFD700;
+  color: #000;
+  border-color: #FFD700;
+  box-shadow: 0 4px 12px rgba(255, 215, 0, 0.3);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #FFC107;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 215, 0, 0.4);
+}
+
+.btn-outline {
+  background: transparent;
+  color: #155724;
+  border-color: #155724;
+}
+
+.btn-outline:hover {
+  background: #155724;
+  color: white;
+  transform: translateY(-2px);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .mailing-list {
+    padding: 2rem 1rem;
+  }
+  
+  .mailing-list h3 {
+    font-size: 1.5rem;
+  }
+  
+  .form-group {
+    flex-direction: column;
+    align-items: center;
+  }
+  
+  .email-input {
+    min-width: 100%;
+    max-width: 300px;
+  }
+  
+  .subscribe-btn {
+    width: 100%;
+    max-width: 300px;
+  }
+  
+  .mailing-list-benefits {
+    grid-template-columns: 1fr;
+  }
+  
+  .benefit-item {
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .mailing-list {
+    padding: 1.5rem 1rem;
+  }
+  
+  .mailing-list h3 {
+    font-size: 1.3rem;
+  }
+  
+  .mailing-list p {
+    font-size: 1rem;
+  }
+}

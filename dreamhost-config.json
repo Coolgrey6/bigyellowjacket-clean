@@ -1,0 +1,41 @@
+{
+  "deployment": {
+    "user": "your_username",
+    "host": "your_domain.com",
+    "path": "/home/your_username/bigyellowjacket",
+    "frontend_domain": "your_domain.com",
+    "backend_domain": "api.your_domain.com",
+    "backend_port": 8766
+  },
+  "ssl": {
+    "enabled": true,
+    "cert_file": "certs/server.crt",
+    "key_file": "certs/server.key",
+    "dhparam_file": "certs/dhparam.pem"
+  },
+  "database": {
+    "type": "sqlite",
+    "path": "data/bigyellowjacket.db"
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "logs/bigyellowjacket.log",
+    "max_size": "10MB",
+    "backup_count": 5
+  },
+  "security": {
+    "rate_limiting": {
+      "enabled": true,
+      "requests_per_minute": 1000
+    },
+    "blocking": {
+      "auto_block_suspicious": true,
+      "block_threshold": 3
+    }
+  },
+  "monitoring": {
+    "scan_interval": 2.0,
+    "metrics_interval": 5.0,
+    "max_connections": 1000
+  }
+}
