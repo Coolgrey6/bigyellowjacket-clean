@@ -1,528 +1,255 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useWebSocket, useWebSocketStore } from '../../hooks/useWebSocket';
+import React, { useState, useEffect } from 'react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
 
-interface Connection {
-  id: string;
-  ip: string;
-  port: number;
-  status: 'CONNECTING' | 'CONNECTED' | 'DISCONNECTING' | 'DISCONNECTED';
-  process?: string;
-  type?: string;
-  latency?: number;
+interface TrafficData {
   timestamp: string;
-  country?: string;
-  city?: string;
+  incoming: number;
+  outgoing: number;
+  total: number;
+  packets: number;
 }
 
-interface TrafficEvent {
-  id: string;
-  type: 'CONNECT' | 'DISCONNECT' | 'THREAT' | 'ALERT';
+interface ProtocolStats {
+  name: string;
+  value: number;
+  color: string;
+}
+
+interface TopTraffic {
   ip: string;
-  port?: number;
-  message: string;
-  timestamp: string;
-  severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-  fadeOut?: boolean;
+  bytes: number;
+  packets: number;
+  country: string;
 }
 
 export const TrafficMonitor: React.FC = () => {
-  const [connections, setConnections] = useState<Connection[]>([]);
-  const [events, setEvents] = useState<TrafficEvent[]>([]);
-  // Internal simulation state (currently unused in UI)
-  const { connected, send } = useWebSocket();
-  const blockedIPs = useWebSocketStore((state) => state.blockedIPs);
-  const liveConnections = useWebSocketStore((state) => state.connections);
-  const blockedListRef = useRef<HTMLDivElement | null>(null);
-  const [paused, setPaused] = useState(false);
-  const [copiedIp, setCopiedIp] = useState<string | null>(null);
-  const [highlightEnabled, setHighlightEnabled] = useState(true);
-  const [patternThreshold, setPatternThreshold] = useState<number>(3);
-  const [showAllPatterns, setShowAllPatterns] = useState<boolean>(false);
-  const [showAllCountries, setShowAllCountries] = useState<boolean>(true);
-  const [neutralLabels, setNeutralLabels] = useState<boolean>(true);
-  const [hideCountryLabels, setHideCountryLabels] = useState<boolean>(false);
+  const [trafficData, setTrafficData] = useState<TrafficData[]>([]);
+  const [protocolStats, setProtocolStats] = useState<ProtocolStats[]>([]);
+  const [topTraffic, setTopTraffic] = useState<TopTraffic[]>([]);
+  const [isConnected, setIsConnected] = useState(false);
 
-  // Pattern maps for quick highlighting
-  const countryCount: Record<string, number> = {} as any;
-  const orgCount: Record<string, number> = {} as any;
-  liveConnections.forEach((c: any) => {
-    const country = c?.country || 'Unknown';
-    const org = c?.organization || c?.organization_name || 'Unknown';
-    countryCount[country] = (countryCount[country] || 0) + 1;
-    orgCount[org] = (orgCount[org] || 0) + 1;
-  });
+  const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
-  // Auto-scroll the blocked IPs list vertically
   useEffect(() => {
-    const el = blockedListRef.current;
-    if (!el || blockedIPs.length === 0 || paused) return;
-
-    let rafId: number | null = null;
-    let stopped = false;
-    const step = () => {
-      if (stopped) return;
-      if (el.scrollHeight <= el.clientHeight) {
-        // Nothing to scroll
-        return;
-      }
-      el.scrollTop += 1;
-      // loop when reaching bottom
-      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 1) {
-        el.scrollTop = 0;
-      }
-      rafId = window.requestAnimationFrame(step);
+    // Connect to WebSocket for real-time traffic data
+    const ws = new WebSocket('ws://localhost:8080/ws');
+    
+    ws.onopen = () => {
+      setIsConnected(true);
+      console.log('Traffic Monitor WebSocket connected');
     };
-    // gentle start
-    rafId = window.requestAnimationFrame(step);
-    return () => {
-      stopped = true;
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, [blockedIPs.length, paused]);
 
-  const getMetaForIp = (ip: string) => {
-    const match = liveConnections.find((c: any) => c.host === ip);
-    return {
-      country: match?.country || 'Unknown',
-      org: match?.organization || match?.organization_name || 'Unknown',
-    };
-  };
-
-  const handleCopy = async (ip: string) => {
-    try {
-      await navigator.clipboard.writeText(ip);
-      setCopiedIp(ip);
-      setTimeout(() => setCopiedIp(null), 1200);
-    } catch (e) {
-      // ignore
-    }
-  };
-
-  const handleUnblockByIP = (host: string) => {
-    if (!connected) return;
-    send({ command: 'unblock_ip', params: { host } });
-  };
-
-  // Log event before removal
-  const logEvent = (event: TrafficEvent) => {
-    console.log(`[TRAFFIC EVENT] ${event.type} - ${event.message} (${event.severity}) - ${event.timestamp}`);
-    // You could also send to a logging service here
-  };
-
-  // Fade out and remove events after 5 seconds
-  useEffect(() => {
-    if (events.length === 0) return;
-
-    const fadeOutTimer = setTimeout(() => {
-      setEvents(prev => {
-        // Find the oldest event and log it before marking for fade-out
-        const oldestEvent = prev[prev.length - 1];
-        if (oldestEvent) {
-          logEvent(oldestEvent);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.message_type === 'traffic_update') {
+          const newTrafficData = {
+            timestamp: new Date().toLocaleTimeString(),
+            incoming: data.data.incoming || Math.random() * 1000,
+            outgoing: data.data.outgoing || Math.random() * 500,
+            total: (data.data.incoming || 0) + (data.data.outgoing || 0),
+            packets: data.data.packets || Math.floor(Math.random() * 100)
+          };
+          setTrafficData(prev => [...prev.slice(-19), newTrafficData]);
         }
+      } catch (error) {
+        console.error('Error parsing traffic data:', error);
+      }
+    };
 
-        // Mark the oldest event for fade-out
-        const updatedEvents = prev.map((event, index) => {
-          if (index === prev.length - 1) { // Oldest event (last in array)
-            return { ...event, fadeOut: true };
-          }
-          return event;
-        });
-        return updatedEvents;
-      });
+    ws.onclose = () => {
+      setIsConnected(false);
+      console.log('Traffic Monitor WebSocket disconnected');
+    };
 
-      // Remove the faded event after animation completes
-      setTimeout(() => {
-        setEvents(prev => prev.filter(event => !event.fadeOut));
-      }, 1000); // Wait 1 second for fade animation
-    }, 5000);
-
-    return () => clearTimeout(fadeOutTimer);
-  }, [events.length]);
-
-  // Simulate real-time connection monitoring
-  useEffect(() => {
-    if (!connected) return;
-
-    const commonIPs = [
-      '142.250.189.238', '172.217.12.98', '104.18.19.125', '52.87.106.55',
-      '44.219.138.89', '13.217.237.122', '3.229.216.80', '17.57.155.39',
-      '193.34.76.44', '162.159.140.229', '99.83.165.34', '142.250.189.194'
+    // Initialize with sample data
+    const sampleProtocolStats = [
+      { name: 'HTTP', value: 45, color: '#3B82F6' },
+      { name: 'HTTPS', value: 30, color: '#10B981' },
+      { name: 'SSH', value: 15, color: '#F59E0B' },
+      { name: 'FTP', value: 7, color: '#EF4444' },
+      { name: 'Other', value: 3, color: '#8B5CF6' }
     ];
+    setProtocolStats(sampleProtocolStats);
 
-    const commonPorts = [443, 80, 22, 21, 25, 53, 993, 995, 5223, 7443];
-    const processes = ['nginx', 'apache', 'ssh', 'mysql', 'redis', 'postgres', 'docker'];
-    const types = ['HTTPS', 'HTTP', 'SSH', 'FTP', 'SMTP', 'DNS', 'IMAPS', 'POP3S', 'XMPP', 'HTTPS'];
-    const countries = ['United States', 'Germany', 'United Kingdom', 'Canada', 'Netherlands', 'Ireland'];
-    const cities = ['San Francisco', 'New York', 'London', 'Frankfurt', 'Amsterdam', 'Dublin'];
+    const sampleTopTraffic = [
+      { ip: '192.168.1.100', bytes: 1024000, packets: 1500, country: 'US' },
+      { ip: '10.0.0.50', bytes: 856000, packets: 1200, country: 'CA' },
+      { ip: '172.16.0.25', bytes: 640000, packets: 900, country: 'UK' },
+      { ip: '203.0.113.1', bytes: 320000, packets: 450, country: 'AU' },
+      { ip: '198.51.100.1', bytes: 180000, packets: 250, country: 'DE' }
+    ];
+    setTopTraffic(sampleTopTraffic);
 
-    let connectionId = 1;
-    let eventId = 1;
-
-    const generateConnection = (): Connection => {
-      const ip = commonIPs[Math.floor(Math.random() * commonIPs.length)];
-      const port = commonPorts[Math.floor(Math.random() * commonPorts.length)];
-      const process = processes[Math.floor(Math.random() * processes.length)];
-      const type = types[Math.floor(Math.random() * types.length)];
-      const country = countries[Math.floor(Math.random() * countries.length)];
-      const city = cities[Math.floor(Math.random() * cities.length)];
-
-      return {
-        id: `conn_${connectionId++}`,
-        ip,
-        port,
-        status: 'CONNECTED',
-        process,
-        type,
-        latency: Math.floor(Math.random() * 500) + 50,
-        timestamp: new Date().toISOString(),
-        country,
-        city
-      };
+    return () => {
+      ws.close();
     };
+  }, []);
 
-    const generateEvent = (type: TrafficEvent['type'], connection?: Connection): TrafficEvent => {
-      const ip = connection?.ip || commonIPs[Math.floor(Math.random() * commonIPs.length)];
-      const port = connection?.port || commonPorts[Math.floor(Math.random() * commonPorts.length)];
-      
-      const messages = {
-        CONNECT: `New connection established from ${ip}:${port}`,
-        DISCONNECT: `Connection terminated from ${ip}:${port}`,
-        THREAT: `Threat detected from ${ip}: Suspicious activity`,
-        ALERT: `Security alert: Unusual traffic pattern from ${ip}`
-      };
-
-      const severities: TrafficEvent['severity'][] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-      const severity = severities[Math.floor(Math.random() * severities.length)];
-
-      return {
-        id: `event_${eventId++}`,
-        type,
-        ip,
-        port,
-        message: messages[type],
-        timestamp: new Date().toISOString(),
-        severity
-      };
-    };
-
-    const interval = setInterval(() => {
-      const action = Math.random();
-      
-      if (action < 0.3 && connections.length < 15) {
-        // New connection
-        const newConnection = generateConnection();
-        setConnections(prev => [...prev, newConnection]);
-        setEvents(prev => [...prev.slice(-49), generateEvent('CONNECT', newConnection)]);
-      } else if (action < 0.5 && connections.length > 5) {
-        // Disconnect random connection
-        const randomIndex = Math.floor(Math.random() * connections.length);
-        const connection = connections[randomIndex];
-        setConnections(prev => prev.filter((_, index) => index !== randomIndex));
-        setEvents(prev => [...prev.slice(-49), generateEvent('DISCONNECT', connection)]);
-      } else if (action < 0.7) {
-        // Threat detection
-        const connection = connections[Math.floor(Math.random() * connections.length)];
-        if (connection) {
-          setEvents(prev => [...prev.slice(-49), generateEvent('THREAT', connection)]);
-        }
-      } else {
-        // Random alert
-        const connection = connections[Math.floor(Math.random() * connections.length)];
-        if (connection) {
-          setEvents(prev => [...prev.slice(-49), generateEvent('ALERT', connection)]);
-        }
-      }
-    }, 3000 + Math.random() * 2000); // 3-5 seconds
-
-    return () => clearInterval(interval);
-  }, [connected, connections]);
-
-  const getStatusColor = (status: Connection['status']) => {
-    switch (status) {
-      case 'CONNECTED': return 'text-green-500 bg-green-50';
-      case 'CONNECTING': return 'text-yellow-500 bg-yellow-50';
-      case 'DISCONNECTING': return 'text-orange-500 bg-orange-50';
-      case 'DISCONNECTED': return 'text-red-500 bg-red-50';
-      default: return 'text-gray-500 bg-gray-50';
-    }
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const getSeverityColor = (severity: TrafficEvent['severity']) => {
-    switch (severity) {
-      case 'CRITICAL': return 'text-red-600 bg-red-100 border-red-300';
-      case 'HIGH': return 'text-orange-600 bg-orange-100 border-orange-300';
-      case 'MEDIUM': return 'text-yellow-600 bg-yellow-100 border-yellow-300';
-      case 'LOW': return 'text-blue-600 bg-blue-100 border-blue-300';
-      default: return 'text-gray-600 bg-gray-100 border-gray-300';
-    }
-  };
-
-  const getEventIcon = (type: TrafficEvent['type']) => {
-    switch (type) {
-      case 'CONNECT': return '🔗';
-      case 'DISCONNECT': return '🔌';
-      case 'THREAT': return '⚠️';
-      case 'ALERT': return '🚨';
-      default: return '📡';
-    }
+  const formatNumber = (num: number) => {
+    return num.toLocaleString();
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-900 text-white">
-      {/* Header */}
-      <div className="bg-gray-800 p-4 border-b border-gray-700">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold flex items-center">
-            <div className="w-3 h-3 bg-blue-500 rounded-full mr-2 animate-pulse"></div>
-            Live Traffic Monitor
-          </h2>
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm">Active Connections: {connections.length}</span>
-              <span className="text-sm">Events: {events.length}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className={`w-2 h-2 rounded-full mr-2 ${connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className="text-sm">{connected ? 'Monitoring' : 'Disconnected'}</span>
-            </div>
+    <div className="p-6 bg-gray-50 min-h-screen">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">Traffic Monitor</h1>
+        <div className="flex items-center space-x-4">
+          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+            isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+          }`}>
+            {isConnected ? '🟢 Live Monitoring' : '🔴 Disconnected'}
           </div>
+          <span className="text-gray-600">Real-time network traffic analysis</span>
         </div>
-        {neutralLabels && (
-          <div className="mt-2 text-[11px] text-gray-400">
-            Security monitoring is geopolitically neutral. Country information reflects IP geolocation only.
-          </div>
-        )}
       </div>
 
-      <div className="bg-gray-800 p-4 border-b border-gray-700">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold">{neutralLabels ? 'Sources (Blocked IPs)' : 'Threat Actors (Blocked IPs)'}</h3>
-          <div className="flex items-center gap-3 text-xs">
-            <label className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={highlightEnabled}
-                onChange={(e) => setHighlightEnabled(e.target.checked)}
-              />
-              Highlight patterns
-            </label>
-            <label className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={neutralLabels}
-                onChange={(e) => setNeutralLabels(e.target.checked)}
-              />
-              Neutral labels
-            </label>
-            <label className="flex items-center gap-1">
-              <input
-                type="checkbox"
-                checked={hideCountryLabels}
-                onChange={(e) => setHideCountryLabels(e.target.checked)}
-              />
-              Hide country labels
-            </label>
-            <label className="flex items-center gap-1">
-              Threshold
-              <input
-                type="number"
-                min={1}
-                value={patternThreshold}
-                onChange={(e) => setPatternThreshold(Math.max(1, Number(e.target.value) || 1))}
-                className="w-14 bg-gray-900 border border-gray-700 rounded px-2 py-0.5"
-              />
-            </label>
-            <button
-              onClick={() => {
-                const topCountries = Object.entries(countryCount)
-                  .filter(([k,v]) => (showAllCountries ? (v as number) >= 1 : (v as number) >= patternThreshold) && k !== 'Unknown')
-                  .sort((a,b) => (b[1] as number) - (a[1] as number))
-                  .slice(0, 200)
-                  .map(([k,v]) => ({ country: k, count: v as number }));
-                const topOrgs = Object.entries(orgCount)
-                  .filter(([k,v]) => (v as number) >= patternThreshold && k !== 'Unknown')
-                  .sort((a,b) => (b[1] as number) - (a[1] as number))
-                  .slice(0, 200)
-                  .map(([k,v]) => ({ org: k, count: v as number }));
-                const data = { generatedAt: new Date().toISOString(), threshold: patternThreshold, topCountries, topOrgs };
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = 'byj_patterns.json'; a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="px-2 py-1 rounded bg-blue-600/20 text-blue-300 hover:bg-blue-600/30"
-            >
-              Export patterns
-            </button>
-            <button
-              onClick={() => setShowAllPatterns(v => !v)}
-              className="px-2 py-1 rounded bg-gray-700/40 text-gray-300 hover:bg-gray-700/60"
-              title={showAllPatterns ? 'Show top patterns only' : 'Show all patterns'}
-            >
-              {showAllPatterns ? 'Show top 5' : 'Show all'}
-            </button>
-            <button
-              onClick={() => setShowAllCountries(v => !v)}
-              className="px-2 py-1 rounded bg-gray-700/40 text-gray-300 hover:bg-gray-700/60"
-              title={showAllCountries ? 'Apply threshold to countries' : 'Ignore threshold for countries'}
-            >
-              {showAllCountries ? 'Countries: threshold' : 'Countries: all'}
-            </button>
+      {/* Traffic Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Total Traffic</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {trafficData.length > 0 ? formatBytes(trafficData[trafficData.length - 1]?.total || 0) : '0 B'}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">📊</span>
+            </div>
           </div>
         </div>
-        {/* Pattern summary */}
-        <div className="text-xs text-gray-400 mb-2 flex flex-wrap gap-2">
-          {!hideCountryLabels && Object.entries(countryCount)
-            .filter(([k,v]) => (showAllCountries ? (v as number) >= 1 : (v as number) >= patternThreshold) && k !== 'Unknown')
-            .sort((a,b) => (b[1] as number) - (a[1] as number))
-            .slice(0, showAllPatterns ? 200 : 5)
-            .map(([k,v]) => (
-              <span key={`cty-${k}`} className="px-2 py-0.5 rounded bg-green-700/20 text-green-300" title={`${neutralLabels ? 'Country count' : 'Country pattern'}: ${v} occurrences`}>
-                {k}: {v as number}
-              </span>
-            ))}
-          {Object.entries(orgCount)
-            .filter(([k,v]) => (v as number) >= patternThreshold && k !== 'Unknown')
-            .sort((a,b) => (b[1] as number) - (a[1] as number))
-            .slice(0, showAllPatterns ? 200 : 5)
-            .map(([k,v]) => (
-              <span key={`org-${k}`} className="px-2 py-0.5 rounded bg-green-700/20 text-green-300" title={`Org pattern: ${v} occurrences`}>
-                {k}: {v as number}
-              </span>
-            ))}
-        </div>
-        {blockedIPs.length === 0 ? (
-          <div className="text-gray-400 text-sm">No blocked IPs yet.</div>
-        ) : (
-          <div
-            ref={blockedListRef}
-            className="max-h-48 overflow-y-auto rounded border border-gray-700"
-            onMouseEnter={() => setPaused(true)}
-            onMouseLeave={() => setPaused(false)}
-          >
-            {blockedIPs.map((ip) => {
-              const meta = getMetaForIp(ip);
-              const isPattern = highlightEnabled && ((countryCount[meta.country] || 0) >= patternThreshold || (orgCount[meta.org] || 0) >= patternThreshold);
-              return (
-                <div key={ip} className={`flex items-center justify-between px-3 py-2 border-b border-gray-700 last:border-b-0 bg-gray-850 ${isPattern ? 'ring-1 ring-green-400/60 bg-green-900/10' : ''}`}>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => handleCopy(ip)}
-                      className="font-mono text-sm text-red-300 hover:text-red-200 underline-offset-2 hover:underline"
-                      title="Click to copy"
-                    >
-                      {copiedIp === ip ? 'Copied' : ip}
-                    </button>
-                    <span className="text-xs text-gray-400">Status: BLOCKED</span>
-                    {!hideCountryLabels && (
-                      <span className="text-[10px] px-2 py-0.5 rounded bg-blue-600/20 text-blue-300">{meta.country}</span>
-                    )}
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-purple-600/20 text-purple-300 max-w-[12rem] truncate" title={meta.org}>{meta.org}</span>
-                  </div>
-                  <button
-                    onClick={() => handleUnblockByIP(ip)}
-                    disabled={!connected}
-                    className="text-xs px-2 py-1 rounded bg-green-600/20 text-green-300 hover:bg-green-600/30 disabled:opacity-50"
-                    title="Unblock IP"
-                  >
-                    Unblock
-                  </button>
-                </div>
-              );
-            })}
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Incoming</p>
+              <p className="text-2xl font-bold text-green-600">
+                {trafficData.length > 0 ? formatBytes(trafficData[trafficData.length - 1]?.incoming || 0) : '0 B'}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">⬇️</span>
+            </div>
           </div>
-        )}
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Outgoing</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {trafficData.length > 0 ? formatBytes(trafficData[trafficData.length - 1]?.outgoing || 0) : '0 B'}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">⬆️</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-600">Packets</p>
+              <p className="text-2xl font-bold text-purple-600">
+                {trafficData.length > 0 ? formatNumber(trafficData[trafficData.length - 1]?.packets || 0) : '0'}
+              </p>
+            </div>
+            <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">📦</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="flex-1 flex">
-        {/* Connections Panel */}
-        <div className="w-1/2 border-r border-gray-700 flex flex-col">
-          <div className="bg-gray-800 p-3 border-b border-gray-700">
-            <h3 className="font-semibold">Active Connections</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {connections.length === 0 ? (
-              <div className="text-gray-500 text-center py-8">
-                No active connections
-              </div>
-            ) : (
-              <div className="p-4 space-y-2">
-                {connections.map((conn) => (
-                  <div
-                    key={conn.id}
-                    className={`bg-gray-800 p-3 rounded border border-gray-700 hover:bg-gray-750 ${highlightEnabled && (countryCount[conn.country || 'Unknown'] || 0) >= patternThreshold ? 'ring-1 ring-green-400/60' : ''}`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-mono text-sm">{conn.ip}</span>
-                        <span className="text-gray-400">:{conn.port}</span>
-                      </div>
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${getStatusColor(conn.status)}`}>
-                        {conn.status}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs text-gray-400">
-                      <div>Process: {conn.process}</div>
-                      <div>Type: {conn.type}</div>
-                      <div>Latency: {conn.latency}ms</div>
-                      <div>Location: {conn.city}, {conn.country}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* Traffic Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">Traffic Over Time</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={trafficData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="timestamp" />
+              <YAxis />
+              <Tooltip formatter={(value) => formatBytes(Number(value))} />
+              <Line type="monotone" dataKey="incoming" stroke="#10B981" strokeWidth={2} name="Incoming" />
+              <Line type="monotone" dataKey="outgoing" stroke="#F59E0B" strokeWidth={2} name="Outgoing" />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
 
-        {/* Events Panel */}
-        <div className="w-1/2 flex flex-col">
-          <div className="bg-gray-800 p-3 border-b border-gray-700">
-            <h3 className="font-semibold">Live Events</h3>
-          </div>
-          <div className="flex-1 overflow-y-auto">
-            {events.length === 0 ? (
-              <div className="text-gray-500 text-center py-8">
-                No events yet
-              </div>
-            ) : (
-              <div className="p-4 space-y-2">
-                {events.slice().reverse().map((event, index) => (
-                  <div
-                    key={event.id}
-                    className={`p-3 rounded border-l-4 transition-all duration-1000 ${getSeverityColor(event.severity)} ${
-                      index === 0 ? 'animate-pulse' : ''
-                    } ${highlightEnabled && (event.type === 'THREAT' || event.type === 'ALERT') ? 'ring-1 ring-green-400/60' : ''} ${event.fadeOut ? 'opacity-0 transform scale-95' : 'opacity-100 transform scale-100'}`}
-                  >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-lg">{getEventIcon(event.type)}</span>
-                        <span className="font-semibold text-sm">{neutralLabels && (event.type === 'THREAT') ? 'ALERT' : event.type}</span>
-                        <span className="text-xs text-gray-500">
-                          {new Date(event.timestamp).toLocaleTimeString()}
-                        </span>
-                      </div>
-                      <span className={`px-2 py-1 rounded text-xs font-bold ${getSeverityColor(event.severity)}`}>
-                        {event.severity}
-                      </span>
-                    </div>
-                    <div className="text-sm text-gray-700">
-                      {neutralLabels && event.type === 'THREAT' ? `Security event detected from ${event.ip}` : event.message}
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      IP: {event.ip} {event.port && `Port: ${event.port}`}
-                    </div>
-                  </div>
+        <div className="bg-white p-6 rounded-lg shadow-sm border">
+          <h3 className="text-lg font-semibold mb-4">Protocol Distribution</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={protocolStats}
+                cx="50%"
+                cy="50%"
+                labelLine={false}
+                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                outerRadius={80}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {protocolStats.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
-              </div>
-            )}
-          </div>
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Top Traffic Sources */}
+      <div className="bg-white rounded-lg shadow-sm border">
+        <div className="p-6 border-b">
+          <h3 className="text-lg font-semibold">Top Traffic Sources</h3>
+          <p className="text-gray-600">IP addresses with highest traffic volume</p>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">IP Address</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Country</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data Transferred</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Packets</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {topTraffic.map((traffic, index) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{traffic.ip}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{traffic.country}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatBytes(traffic.bytes)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatNumber(traffic.packets)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full" 
+                        style={{ width: `${(traffic.bytes / Math.max(...topTraffic.map(t => t.bytes))) * 100}%` }}
+                      ></div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   );
 };
-
-
-

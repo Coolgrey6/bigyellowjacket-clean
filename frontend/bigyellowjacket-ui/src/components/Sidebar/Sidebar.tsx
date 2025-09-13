@@ -5,10 +5,12 @@ export const Sidebar: React.FC = () => {
   const location = useLocation();
 
   const items = [
-    { path: '/', label: 'Overview' },
-    { path: '/monitoring', label: 'Monitoring' },
-    { path: '/traffic', label: 'Traffic Monitor' },
-    { path: '/intelligence', label: 'Network Intelligence' },
+    { path: '/app', label: 'Dashboard' },
+    { path: '/app/monitoring', label: 'Monitoring' },
+    { path: '/app/traffic', label: 'Traffic Monitor' },
+    { path: '/app/connections', label: 'Network Intelligence' },
+    { path: '/app/firewall', label: 'Firewall' },
+    { path: '/app/logs', label: 'Logs' },
   ];
 
   return (

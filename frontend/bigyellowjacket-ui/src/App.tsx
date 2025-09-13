@@ -9,8 +9,8 @@ import { AdvancedDashboard } from './components/AdvancedDashboard/AdvancedDashbo
 import { Dashboard } from './components/Dashboard/Dashboard';
 import { Monitoring } from './components/Monitoring/Monitoring';
 import { NetworkIntelligence } from './components/NetworkIntelligence/NetworkIntelligence';
-import { LogsViewer } from './components/LogsViewer';
-import { TrafficMonitor } from './components/TrafficMonitor';
+import { LogsViewer } from './components/LogsViewer/LogsViewer';
+import { TrafficMonitor } from './components/TrafficMonitor/TrafficMonitor';
 import { FirewallDashboard } from './components/Firewall';
 import { TestPage } from './TestPage';
 

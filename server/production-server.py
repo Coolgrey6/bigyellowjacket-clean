@@ -177,6 +177,14 @@ async def index_handler(request):
     else:
         return web.Response(text="Frontend not found. Please run 'npm run build' first.", status=404)
 
+async def spa_handler(request):
+    """Handle client-side routing for React app"""
+    index_path = FRONTEND_DIST_PATH / "index.html"
+    if index_path.exists():
+        return web.FileResponse(index_path)
+    else:
+        return web.Response(text="Frontend not found. Please run 'npm run build' first.", status=404)
+
 async def create_app():
     """Create the aiohttp application"""
     app = web.Application()
@@ -210,6 +218,8 @@ async def create_app():
     
     # Add frontend routes
     app.router.add_get('/', index_handler)
+    app.router.add_get('/app', spa_handler)
+    app.router.add_get('/app/{path:.*}', spa_handler)
     app.router.add_static('/', FRONTEND_DIST_PATH)
     
     # Add CORS to all routes
