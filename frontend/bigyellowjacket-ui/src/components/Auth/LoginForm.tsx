@@ -50,7 +50,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
     <div className="auth-container">
       <div className="auth-card">
         <div className="auth-header">
-          <div className="auth-logo">
+          <div 
+            className="auth-logo"
+            onClick={() => navigate('/')}
+            title="Back to Homepage"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/'); }}
+            style={{ cursor: 'pointer' }}
+          >
             <div className="jacket-icon-small">🛡️</div>
             <h1>Big Yellow Jacket Security</h1>
           </div>
