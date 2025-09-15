@@ -69,6 +69,14 @@ interface Connection {
   };
 }
 
+interface LoginAttemptRecord {
+  timestamp: string;
+  username: string;
+  success: boolean;
+  ip?: string;
+  userAgent?: string;
+}
+
 interface WebSocketState {
   socket: WebSocket | null;
   connected: boolean;
@@ -91,6 +99,7 @@ interface WebSocketState {
   isAuthenticated: boolean;
   userRole: string | null;
   loginAttempts: number;
+  loginAttemptHistory: LoginAttemptRecord[];
 }
 
 interface WebSocketActions {
@@ -107,6 +116,7 @@ interface WebSocketActions {
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   setUserRole: (role: string) => void;
+  recordLoginAttempt: (record: LoginAttemptRecord) => void;
   setAutoReconnect: (enabled: boolean) => void;
   manualRefresh: () => void;
   resetConnection: () => void;
@@ -245,6 +255,7 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
   isAuthenticated: false,
   userRole: null,
   loginAttempts: 0,
+  loginAttemptHistory: [],
 
   connect: () => {
     try {
@@ -750,6 +761,21 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
         userRole: role,
         loginAttempts: 0 
       });
+      // Record successful attempt
+      get().recordLoginAttempt({
+        timestamp: new Date().toISOString(),
+        username,
+        success: true,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined
+      });
+      // Send to backend for IP capture and aggregation (fire-and-forget)
+      try {
+        fetch('/api/auth/login-attempt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, success: true })
+        }).catch(() => {});
+      } catch {}
       console.log('✅ Login successful for user:', username, 'with role:', role);
       return true;
     } else {
@@ -759,6 +785,21 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
         isAuthenticated: false,
         userRole: null
       });
+      // Record failed attempt
+      get().recordLoginAttempt({
+        timestamp: new Date().toISOString(),
+        username,
+        success: false,
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : undefined
+      });
+      // Send to backend for IP capture and aggregation (fire-and-forget)
+      try {
+        fetch('/api/auth/login-attempt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, success: false })
+        }).catch(() => {});
+      } catch {}
       console.log('❌ Login failed for user:', username, 'attempts:', state.loginAttempts + 1);
       return false;
     }
@@ -776,6 +817,24 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
   setUserRole: (role: string) => {
     console.log('👤 Setting user role to:', role);
     set({ userRole: role });
+  },
+
+  recordLoginAttempt: (record: LoginAttemptRecord) => {
+    try {
+      // Persist in localStorage for simple durability
+      const key = 'byj_login_attempts';
+      const existing = typeof window !== 'undefined' ? localStorage.getItem(key) : null;
+      const parsed: LoginAttemptRecord[] = existing ? JSON.parse(existing) : [];
+      const updated = [record, ...parsed].slice(0, 200);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(updated));
+      }
+      // Update store
+      set((state) => ({ loginAttemptHistory: [record, ...state.loginAttemptHistory].slice(0, 200) }));
+    } catch (e) {
+      console.warn('Failed to persist login attempt', e);
+      set((state) => ({ loginAttemptHistory: [record, ...state.loginAttemptHistory].slice(0, 200) }));
+    }
   }
 }});
 

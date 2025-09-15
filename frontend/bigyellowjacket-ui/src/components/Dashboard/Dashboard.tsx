@@ -16,7 +16,7 @@ interface MetricCardProps {
 }
 
 export const Dashboard: React.FC = () => {
-  const { connected, metrics, connections, alerts } = useWebSocket();
+  const { connected, metrics, connections, alerts, loginAttemptHistory } = useWebSocket();
   const [chartData, setChartData] = useState<Array<{
     time: string;
     cpu: number;
@@ -67,6 +67,25 @@ export const Dashboard: React.FC = () => {
   const networkLoad = (networkBytesRecv + networkBytesSent) / 1024 / 1024; // MB
   const totalTraffic = formatBytes(bytesMonitored);
   const activeConnections = connections?.length ?? 0;
+  const [loginTrend, setLoginTrend] = useState<Array<{ time: string; success: number; failed: number }>>([]);
+
+  // Fetch login stats periodically
+  useEffect(() => {
+    let mounted = true;
+    const fetchStats = async () => {
+      try {
+        const res = await fetch('/api/auth/login-stats');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted && Array.isArray(data?.buckets)) {
+          setLoginTrend(data.buckets);
+        }
+      } catch {}
+    };
+    fetchStats();
+    const id = setInterval(fetchStats, 15000);
+    return () => { mounted = false; clearInterval(id); };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -107,6 +126,47 @@ export const Dashboard: React.FC = () => {
           trend={getTrend(cpuPercent).value}
           trendUp={getTrend(cpuPercent).up}
         />
+      </div>
+
+      {/* Login Attempts and Threat Analysis */}
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-medium flex items-center gap-2">
+            <Lock className="w-5 h-5 text-gray-700" />
+            Login Activity
+          </h3>
+          <span className="text-xs text-gray-500">Last {Math.min(loginAttemptHistory?.length || 0, 10)} attempts</span>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="p-3 bg-gray-50 rounded">
+            <div className="text-xs text-gray-500">Total Attempts</div>
+            <div className="text-lg font-semibold">{loginAttemptHistory?.length || 0}</div>
+          </div>
+          <div className="p-3 bg-green-50 rounded">
+            <div className="text-xs text-gray-600">Successful</div>
+            <div className="text-lg font-semibold text-green-700">{(loginAttemptHistory || []).filter(a => a.success).length}</div>
+          </div>
+          <div className="p-3 bg-red-50 rounded">
+            <div className="text-xs text-gray-600">Failed</div>
+            <div className="text-lg font-semibold text-red-700">{(loginAttemptHistory || []).filter(a => !a.success).length}</div>
+          </div>
+        </div>
+        <div className="space-y-2 max-h-48 overflow-y-auto">
+          {(loginAttemptHistory || []).slice(0, 10).map((a, idx) => (
+            <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+              <div className="text-sm text-gray-800">{a.username || 'unknown'}</div>
+              <div className={`text-xs font-medium ${a.success ? 'text-green-700' : 'text-red-700'}`}>{a.success ? 'SUCCESS' : 'FAILED'}</div>
+              <div className="text-xs text-gray-500">{new Date(a.timestamp).toLocaleString()}</div>
+            </div>
+          ))}
+          {(!loginAttemptHistory || loginAttemptHistory.length === 0) && (
+            <div className="text-center py-6 text-sm text-gray-500">No login activity recorded</div>
+          )}
+        </div>
+        <div className="mt-3 text-sm text-gray-600 flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-yellow-600" />
+          {(loginAttemptHistory || []).filter(a => !a.success).length > 5 ? 'Elevated failed-login activity detected' : 'Login activity within normal range'}
+        </div>
       </div>
 
       {/* Firewall Status Section */}
@@ -187,6 +247,24 @@ export const Dashboard: React.FC = () => {
             </AreaChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* Login Attempt Trend */}
+      <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+        <h3 className="font-medium mb-4 flex items-center gap-2">
+          <Lock className="w-5 h-5 text-gray-700" />
+          Failed Login Attempts (Last 60m)
+        </h3>
+        <ResponsiveContainer width="100%" height={250}>
+          <LineChart data={loginTrend}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="time" tickFormatter={(t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} />
+            <YAxis allowDecimals={false} />
+            <Tooltip labelFormatter={(t) => new Date(t as string).toLocaleTimeString()} />
+            <Line type="monotone" dataKey="failed" stroke="#EF4444" strokeWidth={2} name="Failed" />
+            <Line type="monotone" dataKey="success" stroke="#10B981" strokeWidth={2} name="Success" />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
 
       {/* Connections and Alerts Grid */}

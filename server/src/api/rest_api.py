@@ -23,6 +23,8 @@ class SecurityAPI:
         self.threat_detector = AdvancedThreatDetector()
         self.alert_system = AlertSystem()
         self.app = web.Application()
+        # In-memory login attempts buffer (also persisted to disk)
+        self.login_attempts: List[Dict[str, Any]] = []
         self.setup_routes()
         self.setup_cors()
     
@@ -90,6 +92,10 @@ class SecurityAPI:
         self.app.router.add_get('/api/dashboard/overview', self.get_dashboard_overview)
         self.app.router.add_get('/api/dashboard/real-time', self.get_realtime_data)
         self.app.router.add_get('/api/dashboard/analytics', self.get_analytics_data)
+
+        # Authentication telemetry endpoints
+        self.app.router.add_post('/api/auth/login-attempt', self.record_login_attempt)
+        self.app.router.add_get('/api/auth/login-stats', self.get_login_stats)
     
     # System endpoints
     async def health_check(self, request: web_request.Request) -> web.Response:
@@ -392,6 +398,107 @@ class SecurityAPI:
             return web.json_response({'message': 'CSV export not implemented yet'})
         else:
             return web.json_response({'error': 'Unsupported format'}, status=400)
+
+    # Authentication telemetry helpers/endpoints
+    def _get_client_ip(self, request: web_request.Request) -> str:
+        try:
+            # Prefer Cloudflare, then standard proxy header, then peername
+            cf_ip = request.headers.get('CF-Connecting-IP')
+            if cf_ip:
+                return cf_ip
+            xff = request.headers.get('X-Forwarded-For')
+            if xff:
+                return xff.split(',')[0].strip()
+            peer = request.transport.get_extra_info('peername')
+            if peer and isinstance(peer, (list, tuple)):
+                return peer[0]
+        except Exception:
+            pass
+        return '0.0.0.0'
+
+    async def record_login_attempt(self, request: web_request.Request) -> web.Response:
+        """Record a login attempt with client IP and user agent"""
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+
+        username = (data.get('username') or 'unknown')[:128]
+        success = bool(data.get('success', False))
+        user_agent = request.headers.get('User-Agent', '')[:256]
+        ip = self._get_client_ip(request)
+        ts = datetime.utcnow().isoformat()
+
+        record = {
+            'timestamp': ts,
+            'username': username,
+            'success': success,
+            'ip': ip,
+            'user_agent': user_agent
+        }
+
+        # Append to in-memory buffer (cap size to 5000)
+        self.login_attempts.insert(0, record)
+        self.login_attempts = self.login_attempts[:5000]
+
+        # Persist append-only JSONL
+        try:
+            import os
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            log_dir = os.path.join(base_dir, 'data', 'reports')
+            os.makedirs(log_dir, exist_ok=True)
+            log_file = os.path.join(log_dir, 'login_attempts.jsonl')
+            with open(log_file, 'a') as f:
+                f.write(json.dumps(record) + '\n')
+        except Exception:
+            # Non-fatal; continue even if persistence fails
+            pass
+
+        # Simple risk signal: many failed attempts in short window
+        now = datetime.utcnow()
+        window = now - timedelta(minutes=10)
+        recent_failed = sum(1 for a in self.login_attempts if not a.get('success') and datetime.fromisoformat(a['timestamp']) >= window)
+
+        return web.json_response({'ok': True, 'risk': 'elevated' if recent_failed > 10 else 'normal'})
+
+    async def get_login_stats(self, request: web_request.Request) -> web.Response:
+        """Return aggregated login attempt stats for trend charts"""
+        # Build per-minute buckets over last 60 minutes
+        now = datetime.utcnow().replace(second=0, microsecond=0)
+        buckets: List[Dict[str, Any]] = []
+        for i in range(59, -1, -1):
+            t = now - timedelta(minutes=i)
+            buckets.append({'time': t.isoformat(), 'success': 0, 'failed': 0})
+
+        # Index buckets by time string for quick updates
+        index = {b['time']: b for b in buckets}
+        window_start = now - timedelta(minutes=60)
+
+        for a in self.login_attempts:
+            try:
+                ts = datetime.fromisoformat(a['timestamp']).replace(second=0, microsecond=0)
+            except Exception:
+                continue
+            if ts < window_start:
+                break  # attempts are stored newest-first
+            key = ts.isoformat()
+            if key in index:
+                if a.get('success'):
+                    index[key]['success'] += 1
+                else:
+                    index[key]['failed'] += 1
+
+        total = {
+            'total': len(self.login_attempts),
+            'success': sum(1 for a in self.login_attempts if a.get('success')),
+            'failed': sum(1 for a in self.login_attempts if not a.get('success'))
+        }
+
+        # Simple rate alert signal
+        last_5_failed = sum(b['failed'] for b in buckets[-5:])
+        risk = 'critical' if last_5_failed > 25 else 'elevated' if last_5_failed > 10 else 'normal'
+
+        return web.json_response({'buckets': buckets, 'totals': total, 'risk': risk})
     
     # Configuration endpoints
     async def get_config(self, request: web_request.Request) -> web.Response:

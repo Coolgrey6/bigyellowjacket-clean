@@ -28,12 +28,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
-// Public Route Component (redirects to app if already authenticated)
+// Public Route Component (redirects to monitoring if already authenticated)
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const { isAuthenticated } = useWebSocketStore();
   
   if (isAuthenticated) {
-    return <Navigate to="/app" replace />;
+    return <Navigate to="/app/monitoring" replace />;
   }
   
   return <>{children}</>;

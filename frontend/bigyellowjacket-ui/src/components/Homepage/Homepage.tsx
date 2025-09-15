@@ -1,57 +1,20 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { useWebSocketStore } from '../../hooks/useWebSocket';
 import { MailingList } from '../MailingList/MailingList';
 import './Homepage.css';
+import BeeFlock from './BeeFlock';
 
 export const Homepage: React.FC = () => {
+  const { isAuthenticated } = useWebSocketStore();
   return (
     <div className="homepage">
       {/* Hero Section */}
       <section className="hero">
+        <BeeFlock count={10} />
         <div className="hero-content">
+          <div className="bee-mascot" aria-hidden>🐝</div>
           <div className="logo-container">
-            <div className="jacket-icon">
-              <svg viewBox="0 0 200 200" className="jacket-svg">
-                {/* Jacket Body */}
-                <path
-                  d="M50 40 L150 40 L150 80 L140 80 L140 120 L150 120 L150 160 L50 160 L50 120 L60 120 L60 80 L50 80 Z"
-                  fill="#FFD700"
-                  stroke="#000"
-                  strokeWidth="3"
-                />
-                {/* Zipper */}
-                <line x1="100" y1="40" x2="100" y2="160" stroke="#000" strokeWidth="2"/>
-                {/* Pockets */}
-                <rect x="60" y="100" width="25" height="20" fill="none" stroke="#000" strokeWidth="2"/>
-                <rect x="115" y="100" width="25" height="20" fill="none" stroke="#000" strokeWidth="2"/>
-                {/* Hood */}
-                <path
-                  d="M50 40 L40 30 L40 20 L60 20 L60 30 L50 40"
-                  fill="#FFD700"
-                  stroke="#000"
-                  strokeWidth="3"
-                />
-                <path
-                  d="M150 40 L160 30 L160 20 L140 20 L140 30 L150 40"
-                  fill="#FFD700"
-                  stroke="#000"
-                  strokeWidth="3"
-                />
-                {/* Sleeves */}
-                <path
-                  d="M50 80 L30 70 L30 50 L50 60 L50 80"
-                  fill="#FFD700"
-                  stroke="#000"
-                  strokeWidth="3"
-                />
-                <path
-                  d="M150 80 L170 70 L170 50 L150 60 L150 80"
-                  fill="#FFD700"
-                  stroke="#000"
-                  strokeWidth="3"
-                />
-              </svg>
-            </div>
             <h1 className="company-name">
               <span className="big">BIG</span>
               <span className="yellow-jacket">YELLOW JACKET</span>
@@ -62,10 +25,10 @@ export const Homepage: React.FC = () => {
             Advanced Network Security & Threat Intelligence Platform
           </p>
           <div className="hero-actions">
-            <Link to="/app" className="btn btn-primary">
+            <Link to={isAuthenticated ? "/app/monitoring" : "/login"} className="btn btn-primary">
               Launch Dashboard
             </Link>
-            <Link to="/app/monitoring" className="btn btn-secondary">
+            <Link to={isAuthenticated ? "/app/monitoring" : "/login"} className="btn btn-secondary">
               View Monitoring
             </Link>
           </div>
@@ -141,7 +104,7 @@ export const Homepage: React.FC = () => {
           <h2>Ready to Secure Your Network?</h2>
           <p>Join thousands of organizations trusting Big Yellow Jacket Security for their network protection.</p>
           <div className="cta-actions">
-            <Link to="/app" className="btn btn-primary btn-large">
+            <Link to={isAuthenticated ? "/app/monitoring" : "/login"} className="btn btn-primary btn-large">
               Launch Dashboard
             </Link>
             <Link to="/app/ports" className="btn btn-outline btn-large">
@@ -163,7 +126,7 @@ export const Homepage: React.FC = () => {
               <Link to="/credits" className="footer-link">
                 Development Credits
               </Link>
-              <Link to="/app" className="footer-link">
+              <Link to={isAuthenticated ? "/app/monitoring" : "/login"} className="footer-link">
                 Dashboard
               </Link>
               <Link to="/app/ports" className="footer-link">

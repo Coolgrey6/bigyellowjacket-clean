@@ -47,6 +47,20 @@
   padding: 0 2rem;
 }
 
+.bee-mascot {
+  position: absolute;
+  top: 2rem;
+  right: 2rem;
+  font-size: 2.25rem;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.3));
+  animation: bee-float 2.5s ease-in-out infinite;
+}
+
+@keyframes bee-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-6px) rotate(3deg); }
+}
+
 .logo-container {
   margin-bottom: 2rem;
 }
