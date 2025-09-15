@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Lock, Unlock, AlertTriangle, Activity, Eye, EyeOff, Zap, Globe, Users, Clock } from 'lucide-react';
+import { Shield, Lock, Unlock, AlertTriangle, Activity, Eye, EyeOff, Zap, Globe, Users, Clock, LogOut } from 'lucide-react';
 import { useWebSocketStore } from '../../hooks/useWebSocket';
+import { FirewallLogin } from './FirewallLogin';
 
 interface FirewallStats {
   totalBlocked: number;
@@ -11,10 +12,11 @@ interface FirewallStats {
 }
 
 export const FirewallDashboard: React.FC = () => {
-  const { connected, send, blockedIPs, connections } = useWebSocketStore();
+  const { connected, send, blockedIPs, connections, isAuthenticated, userRole, login, logout } = useWebSocketStore();
   const [firewallEnabled, setFirewallEnabled] = useState(true);
   const [autoBlock, setAutoBlock] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showLogin, setShowLogin] = useState(!isAuthenticated);
   const [stats, setStats] = useState<FirewallStats>({
     totalBlocked: 0,
     activeConnections: 0,
@@ -67,6 +69,31 @@ export const FirewallDashboard: React.FC = () => {
     // In a real implementation, this would configure auto-blocking
   };
 
+  const handleLogin = async (username: string, password: string): Promise<boolean> => {
+    const success = await login(username, password);
+    if (success) {
+      setShowLogin(false);
+    }
+    return success;
+  };
+
+  const handleLogout = () => {
+    logout();
+    setShowLogin(true);
+    setFirewallEnabled(false);
+    setAutoBlock(false);
+    setShowAdvanced(false);
+  };
+
+  const handleCancelLogin = () => {
+    setShowLogin(false);
+  };
+
+  // Show login modal if not authenticated
+  if (showLogin) {
+    return <FirewallLogin onLogin={handleLogin} onCancel={handleCancelLogin} />;
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -80,7 +107,29 @@ export const FirewallDashboard: React.FC = () => {
             <p className="text-gray-600">Advanced network security and threat blocking</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">
+                Logged in as: <span className="font-medium text-gray-900">{userRole}</span>
+              </span>
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-1 px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowLogin(true)}
+              className="flex items-center gap-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            >
+              <Lock className="w-4 h-4" />
+              Login Required
+            </button>
+          )}
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${
             connected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
           }`}>
@@ -97,9 +146,10 @@ export const FirewallDashboard: React.FC = () => {
             <h3 className="font-semibold text-gray-800">Firewall Status</h3>
             <button
               onClick={handleToggleFirewall}
+              disabled={!isAuthenticated}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 firewallEnabled ? 'bg-red-600' : 'bg-gray-300'
-              }`}
+              } ${!isAuthenticated ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -122,9 +172,10 @@ export const FirewallDashboard: React.FC = () => {
             <h3 className="font-semibold text-gray-800">Auto Block</h3>
             <button
               onClick={handleToggleAutoBlock}
+              disabled={!isAuthenticated}
               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                 autoBlock ? 'bg-orange-600' : 'bg-gray-300'
-              }`}
+              } ${!isAuthenticated ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <span
                 className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -168,7 +219,7 @@ export const FirewallDashboard: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <button
             onClick={handleBlockAllSuspicious}
-            disabled={!connected || !firewallEnabled}
+            disabled={!connected || !firewallEnabled || !isAuthenticated}
             className="flex items-center justify-center gap-2 px-4 py-3 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <AlertTriangle className="w-5 h-5" />
@@ -176,7 +227,7 @@ export const FirewallDashboard: React.FC = () => {
           </button>
           <button
             onClick={handleUnblockAll}
-            disabled={!connected || blockedIPs.length === 0}
+            disabled={!connected || blockedIPs.length === 0 || !isAuthenticated}
             className="flex items-center justify-center gap-2 px-4 py-3 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Unlock className="w-5 h-5" />
@@ -184,7 +235,8 @@ export const FirewallDashboard: React.FC = () => {
           </button>
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors"
+            disabled={!isAuthenticated}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {showAdvanced ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             {showAdvanced ? 'Hide' : 'Show'} Advanced
@@ -220,7 +272,7 @@ export const FirewallDashboard: React.FC = () => {
                       params: { host: ip }
                     });
                   }}
-                  disabled={!connected}
+                  disabled={!connected || !isAuthenticated}
                   className="flex items-center gap-1 px-3 py-1 text-sm bg-green-100 text-green-800 rounded hover:bg-green-200 transition-colors disabled:opacity-50"
                 >
                   <Unlock className="w-3 h-3" />
@@ -242,7 +294,7 @@ export const FirewallDashboard: React.FC = () => {
                 <label className="text-sm font-medium text-gray-700">Block Inbound Traffic</label>
                 <button
                   onClick={() => send({ command: 'block_inbound', params: {} })}
-                  disabled={!connected}
+                  disabled={!connected || !isAuthenticated}
                   className="px-4 py-2 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
                 >
                   Block Inbound
@@ -252,7 +304,7 @@ export const FirewallDashboard: React.FC = () => {
                 <label className="text-sm font-medium text-gray-700">Block Outbound Traffic</label>
                 <button
                   onClick={() => send({ command: 'block_outbound', params: {} })}
-                  disabled={!connected}
+                  disabled={!connected || !isAuthenticated}
                   className="px-4 py-2 bg-red-100 text-red-800 rounded-lg hover:bg-red-200 transition-colors disabled:opacity-50"
                 >
                   Block Outbound
@@ -264,7 +316,7 @@ export const FirewallDashboard: React.FC = () => {
                 <label className="text-sm font-medium text-gray-700">Unblock Inbound Traffic</label>
                 <button
                   onClick={() => send({ command: 'unblock_inbound', params: {} })}
-                  disabled={!connected}
+                  disabled={!connected || !isAuthenticated}
                   className="px-4 py-2 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
                 >
                   Unblock Inbound
@@ -274,7 +326,7 @@ export const FirewallDashboard: React.FC = () => {
                 <label className="text-sm font-medium text-gray-700">Unblock Outbound Traffic</label>
                 <button
                   onClick={() => send({ command: 'unblock_outbound', params: {} })}
-                  disabled={!connected}
+                  disabled={!connected || !isAuthenticated}
                   className="px-4 py-2 bg-green-100 text-green-800 rounded-lg hover:bg-green-200 transition-colors disabled:opacity-50"
                 >
                   Unblock Outbound

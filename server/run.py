@@ -31,6 +31,15 @@ except Exception:  # pragma: no cover
 
 import websockets
 
+# Import port blocker
+try:
+    from src.core.port_blocker import PortBlocker
+    port_blocker = PortBlocker()
+    print("🔒 Port blocking system initialized")
+except Exception as e:
+    print(f"⚠️ Port blocking not available: {e}")
+    port_blocker = None
+
 
 HOST = os.environ.get("BYJ_HOST", "0.0.0.0")
 PORT = int(os.environ.get("BYJ_PORT", "8766"))
@@ -164,6 +173,33 @@ async def handle_client(ws: websockets.WebSocketServerProtocol) -> None:
                 await send_json(ws, {"message_type": "connections_update", "data": {"active_connections": get_connections_sample()}})
             elif command == "get_alerts":
                 await send_json(ws, {"message_type": "alerts_update", "data": {"alerts": []}})
+            elif command == "get_port_status":
+                if port_blocker:
+                    port_status = port_blocker.get_port_status()
+                    await send_json(ws, {"message_type": "port_status", "data": port_status})
+                else:
+                    await send_json(ws, {"message_type": "port_status", "data": {"error": "Port blocking not available"}})
+            elif command == "block_port":
+                if port_blocker and "port" in cmd:
+                    port = int(cmd["port"])
+                    reason = cmd.get("reason", "Manual block")
+                    success = port_blocker.block_port(port, reason)
+                    await send_json(ws, {"message_type": "port_block_result", "data": {"success": success, "port": port}})
+                else:
+                    await send_json(ws, {"message_type": "port_block_result", "data": {"success": False, "error": "Invalid command"}})
+            elif command == "unblock_port":
+                if port_blocker and "port" in cmd:
+                    port = int(cmd["port"])
+                    success = port_blocker.unblock_port(port)
+                    await send_json(ws, {"message_type": "port_unblock_result", "data": {"success": success, "port": port}})
+                else:
+                    await send_json(ws, {"message_type": "port_unblock_result", "data": {"success": False, "error": "Invalid command"}})
+            elif command == "emergency_block":
+                if port_blocker:
+                    success = port_blocker.emergency_block_all_unencrypted()
+                    await send_json(ws, {"message_type": "emergency_block_result", "data": {"success": success}})
+                else:
+                    await send_json(ws, {"message_type": "emergency_block_result", "data": {"success": False, "error": "Port blocking not available"}})
             else:
                 # ignore unknown
                 pass

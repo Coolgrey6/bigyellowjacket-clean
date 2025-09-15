@@ -1,7 +1,8 @@
 // src/components/Dashboard/Dashboard.tsx
 
-import React from 'react';
-import { Shield, Activity, Globe, Cpu, Lock, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Shield, Activity, Globe, Cpu, Lock, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { formatBytes } from '../../utils/formatBytes';
 import AlertCard from './AlertCard';
@@ -16,6 +17,35 @@ interface MetricCardProps {
 
 export const Dashboard: React.FC = () => {
   const { connected, metrics, connections, alerts } = useWebSocket();
+  const [chartData, setChartData] = useState<Array<{
+    time: string;
+    cpu: number;
+    memory: number;
+    network: number;
+    connections: number;
+  }>>([]);
+
+  // Update chart data with real-time metrics
+  useEffect(() => {
+    if (metrics?.system) {
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      
+      setChartData(prev => {
+        const newData = {
+          time: timeStr,
+          cpu: metrics.system.cpu?.percent || 0,
+          memory: metrics.system.memory?.percent || 0,
+          network: ((metrics.system.network?.bytes_recv || 0) + (metrics.system.network?.bytes_sent || 0)) / 1024 / 1024, // MB
+          connections: connections?.length || 0
+        };
+        
+        // Keep only last 20 data points for performance
+        const updated = [...prev, newData].slice(-20);
+        return updated;
+      });
+    }
+  }, [metrics, connections]);
 
   // Calculate trends (mock for now, could be calculated from historical data)
   const getTrend = (current: number, baseline: number = 0) => {
@@ -121,6 +151,45 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* Real-time Charts Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* CPU and Memory Chart */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+          <h3 className="font-medium mb-4 flex items-center gap-2">
+            <Cpu className="w-5 h-5 text-blue-500" />
+            System Performance
+          </h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="time" />
+              <YAxis />
+              <Tooltip />
+              <Line type="monotone" dataKey="cpu" stroke="#3B82F6" strokeWidth={2} name="CPU %" />
+              <Line type="monotone" dataKey="memory" stroke="#10B981" strokeWidth={2} name="Memory %" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Network Activity Chart */}
+        <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+          <h3 className="font-medium mb-4 flex items-center gap-2">
+            <Activity className="w-5 h-5 text-purple-500" />
+            Network Activity
+          </h3>
+          <ResponsiveContainer width="100%" height={250}>
+            <AreaChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="time" />
+              <YAxis />
+              <Tooltip />
+              <Area type="monotone" dataKey="network" stroke="#8B5CF6" fill="#8B5CF6" name="Network (MB)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Connections and Alerts Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <AlertCard alerts={alerts || []} />
         <ConnectionsCard connections={connections || []} />
@@ -131,63 +200,139 @@ export const Dashboard: React.FC = () => {
 };
 
 const MetricCard: React.FC<MetricCardProps> = ({ icon, title, value, trend, trendUp }) => (
-  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
     <div className="flex justify-between items-start">
-      <div>
-        <p className="text-gray-500 text-sm">{title}</p>
-        <p className="text-2xl font-bold mt-1">{value}</p>
+      <div className="flex-1">
+        <p className="text-gray-500 text-sm font-medium">{title}</p>
+        <p className="text-2xl font-bold mt-1 text-gray-900">{value}</p>
+        <div className={`mt-2 text-sm flex items-center gap-1 ${trendUp ? 'text-green-500' : 'text-red-500'}`}>
+          {trendUp ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+          <span>{trend} from last hour</span>
+        </div>
       </div>
-      {icon}
-    </div>
-    <div className={`mt-2 text-sm ${trendUp ? 'text-green-500' : 'text-red-500'}`}>
-      {trend} from last hour
+      <div className="p-2 bg-gray-50 rounded-lg">
+        {icon}
+      </div>
     </div>
   </div>
 );
 
 const ConnectionsCard = ({ connections }: { connections: any[] }) => (
-  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-    <h3 className="font-medium mb-4">Active Connections</h3>
-    <div className="space-y-2">
-      {connections.slice(0, 5).map((conn, index) => (
-        <div key={index} className="text-sm flex justify-between">
-          <span>{conn.host}:{conn.port}</span>
-          <span className={`px-2 py-0.5 rounded-full text-xs ${
-            conn.status === 'SAFE' ? 'bg-green-100 text-green-800' :
+  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+    <h3 className="font-medium mb-4 flex items-center gap-2">
+      <Globe className="w-5 h-5 text-blue-500" />
+      Active Connections ({connections?.length || 0})
+    </h3>
+    <div className="space-y-3 max-h-64 overflow-y-auto">
+      {connections?.slice(0, 5).map((conn, index) => (
+        <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+          <div className="flex-1">
+            <div className="text-sm font-medium text-gray-900">{conn.host}:{conn.port}</div>
+            <div className="text-xs text-gray-500">{conn.protocol} • {conn.process || 'Unknown'}</div>
+          </div>
+          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+            conn.status === 'ESTABLISHED' ? 'bg-green-100 text-green-800' :
             conn.status === 'SUSPICIOUS' ? 'bg-yellow-100 text-yellow-800' :
+            conn.status === 'BLOCKED' ? 'bg-red-100 text-red-800' :
             'bg-gray-100 text-gray-800'
           }`}>
             {conn.status}
           </span>
         </div>
       ))}
-      {connections.length === 0 && (
-        <div className="text-gray-500 text-sm">No active connections</div>
+      {(!connections || connections.length === 0) && (
+        <div className="text-center py-8">
+          <div className="text-gray-400 text-4xl mb-2">🔌</div>
+          <div className="text-gray-500 text-sm">No active connections</div>
+        </div>
       )}
     </div>
   </div>
 );
 
-const SystemStatusCard = ({ metrics }: { metrics: any }) => (
-  <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-    <h3 className="font-medium mb-4">System Status</h3>
-    <div className="space-y-3">
-      <div className="flex justify-between text-sm">
-        <span>CPU Usage</span>
-        <span>{(metrics?.system?.cpu?.percent ?? 0).toFixed(1)}%</span>
-      </div>
-      <div className="flex justify-between text-sm">
-        <span>Memory Usage</span>
-        <span>{(metrics?.system?.memory?.percent ?? 0).toFixed(1)}%</span>
-      </div>
-      <div className="flex justify-between text-sm">
-        <span>Network In</span>
-        <span>{formatBytes(metrics?.system?.network?.bytes_recv ?? 0)}/s</span>
-      </div>
-      <div className="flex justify-between text-sm">
-        <span>Network Out</span>
-        <span>{formatBytes(metrics?.system?.network?.bytes_sent ?? 0)}/s</span>
+const SystemStatusCard = ({ metrics }: { metrics: any }) => {
+  const cpuPercent = metrics?.system?.cpu?.percent ?? 0;
+  const memoryPercent = metrics?.system?.memory?.percent ?? 0;
+  const diskPercent = metrics?.system?.disk?.percent ?? 0;
+  
+  const getStatusColor = (percent: number) => {
+    if (percent > 80) return 'text-red-500';
+    if (percent > 60) return 'text-yellow-500';
+    return 'text-green-500';
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+      <h3 className="font-medium mb-4 flex items-center gap-2">
+        <Activity className="w-5 h-5 text-green-500" />
+        System Status
+      </h3>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">CPU Usage</span>
+            <span className={`font-medium ${getStatusColor(cpuPercent)}`}>
+              {cpuPercent.toFixed(1)}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-300 ${
+                cpuPercent > 80 ? 'bg-red-500' : 
+                cpuPercent > 60 ? 'bg-yellow-500' : 'bg-green-500'
+              }`}
+              style={{ width: `${Math.min(cpuPercent, 100)}%` }}
+            ></div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Memory Usage</span>
+            <span className={`font-medium ${getStatusColor(memoryPercent)}`}>
+              {memoryPercent.toFixed(1)}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-300 ${
+                memoryPercent > 80 ? 'bg-red-500' : 
+                memoryPercent > 60 ? 'bg-yellow-500' : 'bg-green-500'
+              }`}
+              style={{ width: `${Math.min(memoryPercent, 100)}%` }}
+            ></div>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-600">Disk Usage</span>
+            <span className={`font-medium ${getStatusColor(diskPercent)}`}>
+              {diskPercent.toFixed(1)}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className={`h-2 rounded-full transition-all duration-300 ${
+                diskPercent > 80 ? 'bg-red-500' : 
+                diskPercent > 60 ? 'bg-yellow-500' : 'bg-green-500'
+              }`}
+              style={{ width: `${Math.min(diskPercent, 100)}%` }}
+            ></div>
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-gray-100">
+          <div className="flex justify-between text-xs text-gray-500">
+            <span>Network In</span>
+            <span>{formatBytes(metrics?.system?.network?.bytes_recv ?? 0)}</span>
+          </div>
+          <div className="flex justify-between text-xs text-gray-500 mt-1">
+            <span>Network Out</span>
+            <span>{formatBytes(metrics?.system?.network?.bytes_sent ?? 0)}</span>
+          </div>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};

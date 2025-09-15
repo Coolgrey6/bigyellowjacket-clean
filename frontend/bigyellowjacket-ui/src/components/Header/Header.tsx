@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Shield } from 'lucide-react';
 
 export const Header: React.FC = () => {
@@ -6,7 +7,7 @@ export const Header: React.FC = () => {
     <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <Link to="/" className="flex items-center space-x-3 hover:opacity-80 transition-opacity">
             <div className="p-2 bg-yellow-100 rounded-lg">
               <Shield className="w-8 h-8 text-yellow-600" />
             </div>
@@ -18,7 +19,7 @@ export const Header: React.FC = () => {
                 Network Security & Firewall Management
               </p>
             </div>
-          </div>
+          </Link>
           <div className="flex items-center space-x-4">
             <div className="text-right">
               <div className="text-sm text-gray-600">Status</div>

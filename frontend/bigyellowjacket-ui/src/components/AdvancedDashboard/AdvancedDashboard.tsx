@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
          BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
+import { useWebSocket } from '../../hooks/useWebSocket';
 import './AdvancedDashboard.css';
 
 interface DashboardData {
@@ -35,6 +36,7 @@ interface DashboardData {
 }
 
 export const AdvancedDashboard: React.FC = () => {
+  const { connected, metrics, connections, alerts } = useWebSocket();
   const [data, setData] = useState<DashboardData>({
     systemMetrics: { cpu: 0, memory: 0, disk: 0, network: 0 },
     threatData: { total: 0, critical: 0, high: 0, medium: 0, low: 0 },
@@ -45,62 +47,52 @@ export const AdvancedDashboard: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTimeRange, setSelectedTimeRange] = useState('1h');
 
-  // Generate sample data for demonstration
+  // Update data with real WebSocket data
   useEffect(() => {
-    const generateSampleData = () => {
+    if (metrics?.system) {
       const now = new Date();
-      const connectionData = [];
+      const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
       
-      // Generate last 24 hours of data
-      for (let i = 23; i >= 0; i--) {
-        const time = new Date(now.getTime() - i * 60 * 60 * 1000);
-        connectionData.push({
-          time: time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-          connections: Math.floor(Math.random() * 100) + 20,
-          threats: Math.floor(Math.random() * 10),
-          cpu: Math.floor(Math.random() * 40) + 20,
-          memory: Math.floor(Math.random() * 30) + 40,
-          network: Math.floor(Math.random() * 50) + 10
-        });
-      }
+      setData(prev => {
+        const newConnectionData = {
+          time: timeStr,
+          connections: connections?.length || 0,
+          threats: alerts?.length || 0,
+          cpu: metrics.system.cpu?.percent || 0,
+          memory: metrics.system.memory?.percent || 0,
+          network: ((metrics.system.network?.bytes_recv || 0) + (metrics.system.network?.bytes_sent || 0)) / 1024 / 1024
+        };
 
-      setData({
-        systemMetrics: {
-          cpu: Math.floor(Math.random() * 20) + 30,
-          memory: Math.floor(Math.random() * 20) + 50,
-          disk: Math.floor(Math.random() * 15) + 25,
-          network: Math.floor(Math.random() * 30) + 20
-        },
-        threatData: {
-          total: Math.floor(Math.random() * 50) + 20,
-          critical: Math.floor(Math.random() * 5) + 2,
-          high: Math.floor(Math.random() * 8) + 5,
-          medium: Math.floor(Math.random() * 15) + 10,
-          low: Math.floor(Math.random() * 20) + 15
-        },
-        connectionData,
-        topThreats: [
-          { ip: '192.168.1.100', count: 45, severity: 'critical' },
-          { ip: '10.0.0.50', count: 32, severity: 'high' },
-          { ip: '172.16.0.25', count: 28, severity: 'medium' },
-          { ip: '203.0.113.1', count: 22, severity: 'high' },
-          { ip: '198.51.100.1', count: 18, severity: 'low' }
-        ],
-        geoData: [
-          { country: 'United States', threats: 45, connections: 120 },
-          { country: 'China', threats: 32, connections: 85 },
-          { country: 'Russia', threats: 28, connections: 65 },
-          { country: 'Germany', threats: 22, connections: 55 },
-          { country: 'Brazil', threats: 18, connections: 45 }
-        ]
+        return {
+          systemMetrics: {
+            cpu: metrics.system.cpu?.percent || 0,
+            memory: metrics.system.memory?.percent || 0,
+            disk: metrics.system.disk?.percent || 0,
+            network: ((metrics.system.network?.bytes_recv || 0) + (metrics.system.network?.bytes_sent || 0)) / 1024 / 1024
+          },
+          threatData: {
+            total: alerts?.length || 0,
+            critical: alerts?.filter(a => a.type?.toLowerCase().includes('critical')).length || 0,
+            high: alerts?.filter(a => a.type?.toLowerCase().includes('high')).length || 0,
+            medium: alerts?.filter(a => a.type?.toLowerCase().includes('medium')).length || 0,
+            low: alerts?.filter(a => a.type?.toLowerCase().includes('low')).length || 0
+          },
+          connectionData: [...prev.connectionData, newConnectionData].slice(-24), // Keep last 24 data points
+          topThreats: connections?.slice(0, 5).map((conn, index) => ({
+            ip: conn.host,
+            count: Math.floor(Math.random() * 50) + 10, // Mock count for now
+            severity: conn.status === 'ESTABLISHED' ? 'low' : 
+                     conn.status === 'SUSPICIOUS' ? 'medium' : 'high'
+          })) || [],
+          geoData: [
+            { country: 'Local', threats: alerts?.length || 0, connections: connections?.length || 0 },
+            { country: 'Unknown', threats: 0, connections: 0 }
+          ]
+        };
       });
       setIsLoading(false);
-    };
-
-    generateSampleData();
-    const interval = setInterval(generateSampleData, 5000); // Update every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
+    }
+  }, [metrics, connections, alerts]);
 
   const threatColors = {
     critical: '#dc3545',

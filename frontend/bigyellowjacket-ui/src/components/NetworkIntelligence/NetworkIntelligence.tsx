@@ -40,7 +40,7 @@ export const NetworkIntelligence: React.FC = () => {
 
   useEffect(() => {
     // Connect to WebSocket for real-time intelligence data
-    const ws = new WebSocket('ws://localhost:8080/ws');
+    const ws = new WebSocket('ws://localhost:8766');
     
     ws.onopen = () => {
       setIsConnected(true);

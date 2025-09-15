@@ -12,6 +12,7 @@ import { NetworkIntelligence } from './components/NetworkIntelligence/NetworkInt
 import { LogsViewer } from './components/LogsViewer/LogsViewer';
 import { TrafficMonitor } from './components/TrafficMonitor/TrafficMonitor';
 import { FirewallDashboard } from './components/Firewall';
+import { PortBlocker } from './components/PortBlocker/PortBlocker';
 import { TestPage } from './TestPage';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="advanced" element={<AdvancedDashboard />} />
           <Route path="firewall" element={<FirewallDashboard />} />
+          <Route path="ports" element={<PortBlocker />} />
           <Route path="monitoring" element={<Monitoring />} />
           <Route path="connections" element={<NetworkIntelligence />} />
           <Route path="logs" element={<LogsViewer />} />

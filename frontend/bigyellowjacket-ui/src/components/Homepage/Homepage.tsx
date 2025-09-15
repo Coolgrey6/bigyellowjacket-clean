@@ -142,10 +142,10 @@ export const Homepage: React.FC = () => {
           <p>Join thousands of organizations trusting Big Yellow Jacket Security for their network protection.</p>
           <div className="cta-actions">
             <Link to="/app" className="btn btn-primary btn-large">
-              Get Started Now
+              Launch Dashboard
             </Link>
-            <Link to="/app/monitoring" className="btn btn-outline btn-large">
-              View Demo
+            <Link to="/app/ports" className="btn btn-outline btn-large">
+              Try Port Blocker
             </Link>
           </div>
         </div>
@@ -166,8 +166,11 @@ export const Homepage: React.FC = () => {
               <Link to="/app" className="footer-link">
                 Dashboard
               </Link>
-              <Link to="/app/monitoring" className="footer-link">
-                Monitoring
+              <Link to="/app/ports" className="footer-link">
+                Port Blocker
+              </Link>
+              <Link to="/app/firewall" className="footer-link">
+                Firewall
               </Link>
             </div>
           </div>

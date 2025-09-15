@@ -77,6 +77,7 @@ interface WebSocketState {
   connections: Connection[];
   alerts: Alert[];
   blockedIPs: string[];
+  portStatus: any; // Add port status to global state
   autoReconnect: boolean;
   connectionAttempts: number;
   maxRetries: number;
@@ -85,6 +86,11 @@ interface WebSocketState {
   isConnecting: boolean; // Flag to prevent multiple simultaneous connection attempts
   circuitBreakerOpen: boolean; // Circuit breaker to prevent connection storms
   lastConnectionTime: number; // Timestamp of last connection attempt
+  
+  // Authentication state
+  isAuthenticated: boolean;
+  userRole: string | null;
+  loginAttempts: number;
 }
 
 interface WebSocketActions {
@@ -95,6 +101,12 @@ interface WebSocketActions {
   updateConnections: (data: Connection[]) => void;
   updateAlerts: (data: Alert[]) => void;
   updateBlockedIPs: (data: string[]) => void;
+  updatePortStatus: (data: any) => void;
+  
+  // Authentication actions
+  login: (username: string, password: string) => Promise<boolean>;
+  logout: () => void;
+  setUserRole: (role: string) => void;
   setAutoReconnect: (enabled: boolean) => void;
   manualRefresh: () => void;
   resetConnection: () => void;
@@ -219,6 +231,7 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
   connections: [],
   alerts: [],
   blockedIPs: [],
+  portStatus: null,
   autoReconnect: true,
   connectionAttempts: 0,
   maxRetries: 5,
@@ -227,6 +240,11 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
   isConnecting: false,   // Initialize connection state flag
   circuitBreakerOpen: false,  // Initialize circuit breaker
   lastConnectionTime: 0,      // Initialize last connection time
+  
+  // Authentication state
+  isAuthenticated: false,
+  userRole: null,
+  loginAttempts: 0,
 
   connect: () => {
     try {
@@ -304,7 +322,7 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
       const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       const wsUrl = envWsUrl && envWsUrl.trim().length > 0
         ? envWsUrl
-        : (isLocalhost ? 'ws://localhost:8080/ws' : 'wss://bigyellowjacket.com:8080/ws');
+        : (isLocalhost ? 'ws://localhost:8766' : 'wss://bigyellowjacket.com:8766');
       console.log('🔍 WebSocket connection details:', {
         url: wsUrl,
         currentTime: new Date().toISOString(),
@@ -429,6 +447,23 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
               break;
             case 'welcome':
               console.log('Received welcome message:', message.data);
+              break;
+            case 'port_status':
+              console.log('Received port status:', message.data);
+              get().updatePortStatus(message.data);
+              // Clear any loading states when we receive port status
+              break;
+            case 'port_block_result':
+              console.log('Port block result:', message.data);
+              // Handle port block results
+              break;
+            case 'port_unblock_result':
+              console.log('Port unblock result:', message.data);
+              // Handle port unblock results
+              break;
+            case 'emergency_block_result':
+              console.log('Emergency block result:', message.data);
+              // Handle emergency block results
               break;
             default:
               console.log('Unknown message type:', message.message_type);
@@ -605,6 +640,11 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
     }
   },
 
+  updatePortStatus: (data) => {
+    console.log('Updating port status in store:', data);
+    set({ portStatus: data });
+  },
+
   setAutoReconnect: (enabled: boolean) => {
     console.log('🔧 setAutoReconnect called with:', enabled);
     set({ autoReconnect: enabled });
@@ -687,6 +727,55 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
     setTimeout(() => {
       get().connect();
     }, 2000); // Increased delay for stability
+  },
+
+  // Authentication methods
+  login: async (username: string, password: string): Promise<boolean> => {
+    console.log('🔐 Attempting login for user:', username);
+    
+    // Simple authentication logic (in production, this would be server-side)
+    const validCredentials = {
+      'admin': 'admin123',
+      'firewall': 'firewall123',
+      'security': 'security123',
+      'user': 'user123'
+    };
+    
+    const isValid = validCredentials[username as keyof typeof validCredentials] === password;
+    
+    if (isValid) {
+      const role = username === 'admin' ? 'admin' : 'user';
+      set({ 
+        isAuthenticated: true, 
+        userRole: role,
+        loginAttempts: 0 
+      });
+      console.log('✅ Login successful for user:', username, 'with role:', role);
+      return true;
+    } else {
+      const state = get();
+      set({ 
+        loginAttempts: state.loginAttempts + 1,
+        isAuthenticated: false,
+        userRole: null
+      });
+      console.log('❌ Login failed for user:', username, 'attempts:', state.loginAttempts + 1);
+      return false;
+    }
+  },
+
+  logout: () => {
+    console.log('🚪 Logging out user');
+    set({ 
+      isAuthenticated: false, 
+      userRole: null,
+      loginAttempts: 0 
+    });
+  },
+
+  setUserRole: (role: string) => {
+    console.log('👤 Setting user role to:', role);
+    set({ userRole: role });
   }
 }});
 

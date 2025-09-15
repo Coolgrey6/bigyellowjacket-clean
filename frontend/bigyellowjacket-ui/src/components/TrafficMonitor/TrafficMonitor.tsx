@@ -32,7 +32,7 @@ export const TrafficMonitor: React.FC = () => {
 
   useEffect(() => {
     // Connect to WebSocket for real-time traffic data
-    const ws = new WebSocket('ws://localhost:8080/ws');
+    const ws = new WebSocket('ws://localhost:8766');
     
     ws.onopen = () => {
       setIsConnected(true);
