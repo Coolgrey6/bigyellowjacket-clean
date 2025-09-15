@@ -9,6 +9,7 @@ export const Sidebar: React.FC = () => {
     { path: '/app/monitoring', label: 'Monitoring' },
     { path: '/app/traffic', label: 'Traffic Monitor' },
     { path: '/app/connections', label: 'Network Intelligence' },
+    { path: '/app/attacks', label: 'Live Attacks' },
     { path: '/app/firewall', label: 'Firewall' },
     { path: '/app/ports', label: 'Port Blocker' },
     { path: '/app/logs', label: 'Logs' },

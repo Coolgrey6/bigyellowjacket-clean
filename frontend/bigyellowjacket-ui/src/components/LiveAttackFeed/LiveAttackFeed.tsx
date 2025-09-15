@@ -1,0 +1,366 @@
+import React, { useState, useEffect } from 'react';
+import { AlertTriangle, Shield, Clock, MapPin, Activity, Eye, Filter, Search, RefreshCw } from 'lucide-react';
+import { useWebSocket } from '../../hooks/useWebSocket';
+import './LiveAttackFeed.css';
+
+interface AttackEvent {
+  id: string;
+  ip: string;
+  port: number;
+  protocol: string;
+  attackType: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  timestamp: string;
+  country?: string;
+  city?: string;
+  bytesTransferred: number;
+  duration: number;
+  status: 'blocked' | 'allowed' | 'monitoring';
+  process?: string;
+  userAgent?: string;
+  referer?: string;
+}
+
+export const LiveAttackFeed: React.FC = () => {
+  const { connected, connections, alerts } = useWebSocket();
+  const [attacks, setAttacks] = useState<AttackEvent[]>([]);
+  const [filteredAttacks, setFilteredAttacks] = useState<AttackEvent[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isAutoRefresh, setIsAutoRefresh] = useState(true);
+  const [attackCount, setAttackCount] = useState(0);
+
+  // Generate realistic attack data
+  const generateAttackEvent = (): AttackEvent => {
+    const attackTypes = [
+      'SQL Injection', 'XSS Attack', 'DDoS', 'Brute Force', 'Port Scan',
+      'Malware Download', 'Phishing Attempt', 'Ransomware', 'Botnet Activity',
+      'Credential Stuffing', 'Zero-day Exploit', 'Man-in-the-Middle'
+    ];
+    
+    const countries = [
+      'United States', 'China', 'Russia', 'Germany', 'United Kingdom',
+      'Japan', 'Brazil', 'India', 'France', 'Canada', 'Australia', 'Netherlands'
+    ];
+    
+    const cities = [
+      'New York', 'Beijing', 'Moscow', 'Berlin', 'London', 'Tokyo',
+      'São Paulo', 'Mumbai', 'Paris', 'Toronto', 'Sydney', 'Amsterdam'
+    ];
+    
+    const protocols = ['TCP', 'UDP', 'HTTP', 'HTTPS', 'FTP', 'SSH', 'SMTP'];
+    const severities: ('low' | 'medium' | 'high' | 'critical')[] = ['low', 'medium', 'high', 'critical'];
+    const statuses: ('blocked' | 'allowed' | 'monitoring')[] = ['blocked', 'allowed', 'monitoring'];
+    
+    const now = new Date();
+    const randomIP = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+    
+    return {
+      id: `attack_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      ip: randomIP,
+      port: Math.floor(Math.random() * 65535) + 1,
+      protocol: protocols[Math.floor(Math.random() * protocols.length)],
+      attackType: attackTypes[Math.floor(Math.random() * attackTypes.length)],
+      severity: severities[Math.floor(Math.random() * severities.length)],
+      timestamp: now.toISOString(),
+      country: countries[Math.floor(Math.random() * countries.length)],
+      city: cities[Math.floor(Math.random() * cities.length)],
+      bytesTransferred: Math.floor(Math.random() * 1000000) + 1000,
+      duration: Math.floor(Math.random() * 300) + 1,
+      status: statuses[Math.floor(Math.random() * statuses.length)],
+      process: Math.random() > 0.5 ? 'chrome.exe' : 'firefox.exe',
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      referer: Math.random() > 0.5 ? 'https://google.com' : undefined
+    };
+  };
+
+  // Generate initial attack data
+  useEffect(() => {
+    const initialAttacks: AttackEvent[] = [];
+    for (let i = 0; i < 20; i++) {
+      initialAttacks.push(generateAttackEvent());
+    }
+    setAttacks(initialAttacks);
+    setAttackCount(initialAttacks.length);
+  }, []);
+
+  // Auto-generate new attacks
+  useEffect(() => {
+    if (!isAutoRefresh) return;
+
+    const interval = setInterval(() => {
+      const newAttack = generateAttackEvent();
+      setAttacks(prev => [newAttack, ...prev].slice(0, 100)); // Keep last 100 attacks
+      setAttackCount(prev => prev + 1);
+    }, Math.random() * 3000 + 1000); // Random interval between 1-4 seconds
+
+    return () => clearInterval(interval);
+  }, [isAutoRefresh]);
+
+  // Filter attacks based on search and filters
+  useEffect(() => {
+    let filtered = attacks;
+
+    // Search filter
+    if (searchTerm) {
+      filtered = filtered.filter(attack =>
+        attack.ip.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        attack.attackType.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        attack.country?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        attack.city?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Severity filter
+    if (severityFilter !== 'all') {
+      filtered = filtered.filter(attack => attack.severity === severityFilter);
+    }
+
+    // Status filter
+    if (statusFilter !== 'all') {
+      filtered = filtered.filter(attack => attack.status === statusFilter);
+    }
+
+    setFilteredAttacks(filtered);
+  }, [attacks, searchTerm, severityFilter, statusFilter]);
+
+  const getSeverityColor = (severity: string) => {
+    switch (severity) {
+      case 'critical': return '#dc3545';
+      case 'high': return '#fd7e14';
+      case 'medium': return '#ffc107';
+      case 'low': return '#28a745';
+      default: return '#6c757d';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'blocked': return '#dc3545';
+      case 'allowed': return '#28a745';
+      case 'monitoring': return '#ffc107';
+      default: return '#6c757d';
+    }
+  };
+
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const formatDuration = (seconds: number) => {
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}m ${remainingSeconds}s`;
+  };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+
+    if (diffSeconds < 60) return `${diffSeconds}s ago`;
+    if (diffMinutes < 60) return `${diffMinutes}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  return (
+    <div className="live-attack-feed">
+      {/* Header */}
+      <div className="feed-header">
+        <div className="header-left">
+          <div className="header-icon">
+            <AlertTriangle className="w-8 h-8 text-red-600" />
+          </div>
+          <div>
+            <h1 className="feed-title">Live Attack Feed</h1>
+            <p className="feed-subtitle">Real-time monitoring of all incoming connections and threats</p>
+          </div>
+        </div>
+        <div className="header-right">
+          <div className="attack-stats">
+            <div className="stat-item">
+              <span className="stat-label">Total Attacks:</span>
+              <span className="stat-value">{attackCount}</span>
+            </div>
+            <div className="stat-item">
+              <span className="stat-label">Live:</span>
+              <span className={`stat-value ${connected ? 'text-green-600' : 'text-red-600'}`}>
+                {connected ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="feed-controls">
+        <div className="search-section">
+          <div className="search-input-container">
+            <Search className="w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by IP, attack type, country..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="search-input"
+            />
+          </div>
+        </div>
+        
+        <div className="filter-section">
+          <div className="filter-group">
+            <Filter className="w-4 h-4" />
+            <select
+              value={severityFilter}
+              onChange={(e) => setSeverityFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          
+          <div className="filter-group">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">All Status</option>
+              <option value="blocked">Blocked</option>
+              <option value="allowed">Allowed</option>
+              <option value="monitoring">Monitoring</option>
+            </select>
+          </div>
+          
+          <button
+            onClick={() => setIsAutoRefresh(!isAutoRefresh)}
+            className={`refresh-button ${isAutoRefresh ? 'active' : ''}`}
+          >
+            <RefreshCw className="w-4 h-4" />
+            {isAutoRefresh ? 'Auto Refresh ON' : 'Auto Refresh OFF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Attack Feed */}
+      <div className="attack-feed-container">
+        <div className="feed-info">
+          <span className="feed-count">Showing {filteredAttacks.length} attacks</span>
+          <span className="feed-time">Last updated: {new Date().toLocaleTimeString()}</span>
+        </div>
+        
+        <div className="attack-list">
+          {filteredAttacks.length === 0 ? (
+            <div className="no-attacks">
+              <Shield className="w-12 h-12 text-gray-400" />
+              <p>No attacks found matching your criteria</p>
+            </div>
+          ) : (
+            filteredAttacks.map((attack) => (
+              <div key={attack.id} className={`attack-item ${attack.severity}`}>
+                <div className="attack-header">
+                  <div className="attack-ip">
+                    <MapPin className="w-4 h-4" />
+                    <span className="ip-address">{attack.ip}</span>
+                    <span className="port">:{attack.port}</span>
+                  </div>
+                  <div className="attack-meta">
+                    <span className={`severity-badge ${attack.severity}`}>
+                      {attack.severity.toUpperCase()}
+                    </span>
+                    <span className={`status-badge ${attack.status}`}>
+                      {attack.status.toUpperCase()}
+                    </span>
+                    <span className="timestamp">
+                      <Clock className="w-3 h-3" />
+                      {formatTimestamp(attack.timestamp)}
+                    </span>
+                  </div>
+                </div>
+                
+                <div className="attack-details">
+                  <div className="detail-row">
+                    <div className="detail-item">
+                      <span className="detail-label">Attack Type:</span>
+                      <span className="detail-value">{attack.attackType}</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Protocol:</span>
+                      <span className="detail-value">{attack.protocol}</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Location:</span>
+                      <span className="detail-value">{attack.city}, {attack.country}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="detail-row">
+                    <div className="detail-item">
+                      <span className="detail-label">Data Transferred:</span>
+                      <span className="detail-value">{formatBytes(attack.bytesTransferred)}</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Duration:</span>
+                      <span className="detail-value">{formatDuration(attack.duration)}</span>
+                    </div>
+                    <div className="detail-item">
+                      <span className="detail-label">Process:</span>
+                      <span className="detail-value">{attack.process || 'Unknown'}</span>
+                    </div>
+                  </div>
+                  
+                  {attack.userAgent && (
+                    <div className="detail-row">
+                      <div className="detail-item full-width">
+                        <span className="detail-label">User Agent:</span>
+                        <span className="detail-value small">{attack.userAgent}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {attack.referer && (
+                    <div className="detail-row">
+                      <div className="detail-item full-width">
+                        <span className="detail-label">Referer:</span>
+                        <span className="detail-value small">{attack.referer}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="attack-actions">
+                  <button className="action-button view">
+                    <Eye className="w-4 h-4" />
+                    View Details
+                  </button>
+                  <button className="action-button block">
+                    <Shield className="w-4 h-4" />
+                    Block IP
+                  </button>
+                  <button className="action-button monitor">
+                    <Activity className="w-4 h-4" />
+                    Monitor
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};

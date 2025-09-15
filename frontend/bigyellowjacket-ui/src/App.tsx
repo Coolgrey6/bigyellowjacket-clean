@@ -13,6 +13,7 @@ import { LogsViewer } from './components/LogsViewer/LogsViewer';
 import { TrafficMonitor } from './components/TrafficMonitor/TrafficMonitor';
 import { FirewallDashboard } from './components/Firewall';
 import { PortBlocker } from './components/PortBlocker/PortBlocker';
+import { LiveAttackFeed } from './components/LiveAttackFeed/LiveAttackFeed';
 import { TestPage } from './TestPage';
 import { useWebSocketStore } from './hooks/useWebSocket';
 
@@ -71,12 +72,13 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="advanced" element={<AdvancedDashboard />} />
           <Route path="firewall" element={<FirewallDashboard />} />
-          <Route path="ports" element={<PortBlocker />} />
-          <Route path="monitoring" element={<Monitoring />} />
-          <Route path="connections" element={<NetworkIntelligence />} />
-          <Route path="logs" element={<LogsViewer />} />
-          <Route path="traffic" element={<TrafficMonitor />} />
-          <Route path="test" element={<TestPage />} />
+              <Route path="ports" element={<PortBlocker />} />
+              <Route path="monitoring" element={<Monitoring />} />
+              <Route path="connections" element={<NetworkIntelligence />} />
+              <Route path="attacks" element={<LiveAttackFeed />} />
+              <Route path="logs" element={<LogsViewer />} />
+              <Route path="traffic" element={<TrafficMonitor />} />
+              <Route path="test" element={<TestPage />} />
           <Route path="alerts" element={<div>Alerts Page</div>} />
           <Route path="data" element={<div>Data Page</div>} />
           <Route path="settings" element={<div>Settings Page</div>} />
