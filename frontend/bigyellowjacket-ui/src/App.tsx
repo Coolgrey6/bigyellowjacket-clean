@@ -1,6 +1,6 @@
 // src/App.tsx
 
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/Layout/AppLayout';
 import { Homepage } from './components/Homepage/Homepage';
 import { Credits } from './components/Credits/Credits';
@@ -14,15 +14,59 @@ import { TrafficMonitor } from './components/TrafficMonitor/TrafficMonitor';
 import { FirewallDashboard } from './components/Firewall';
 import { PortBlocker } from './components/PortBlocker/PortBlocker';
 import { TestPage } from './TestPage';
+import { useWebSocketStore } from './hooks/useWebSocket';
+
+// Protected Route Component
+const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated } = useWebSocketStore();
+  
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  
+  return <>{children}</>;
+};
+
+// Public Route Component (redirects to app if already authenticated)
+const PublicRoute = ({ children }: { children: React.ReactNode }) => {
+  const { isAuthenticated } = useWebSocketStore();
+  
+  if (isAuthenticated) {
+    return <Navigate to="/app" replace />;
+  }
+  
+  return <>{children}</>;
+};
 
 function App() {
+  const { login } = useWebSocketStore();
+
+  const handleLogin = async (user: { username: string; role: string; password: string }) => {
+    // Use the WebSocket store login method with the actual password
+    await login(user.username, user.password);
+  };
+
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Homepage />} />
         <Route path="/credits" element={<Credits />} />
-        <Route path="/login" element={<LoginForm onLogin={() => {}} />} />
-        <Route path="/app" element={<AppLayout />}>
+        <Route 
+          path="/login" 
+          element={
+            <PublicRoute>
+              <LoginForm onLogin={handleLogin} />
+            </PublicRoute>
+          } 
+        />
+        <Route 
+          path="/app" 
+          element={
+            <ProtectedRoute>
+              <AppLayout />
+            </ProtectedRoute>
+          }
+        >
           <Route index element={<AdvancedDashboard />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="advanced" element={<AdvancedDashboard />} />

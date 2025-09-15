@@ -735,16 +735,16 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
     
     // Simple authentication logic (in production, this would be server-side)
     const validCredentials = {
-      'admin': 'admin123',
-      'firewall': 'firewall123',
-      'security': 'security123',
-      'user': 'user123'
+      'phoenix_7x': 'SecureNet@2024#Phoenix!',
+      'storm_delta': 'CyberGuard$2024*Storm&',
+      'cyber_wolf': 'FireWall!2024@Wolf#Secure',
+      'shadow_ops': 'NetShield%2024^Shadow*Ops'
     };
     
     const isValid = validCredentials[username as keyof typeof validCredentials] === password;
     
     if (isValid) {
-      const role = username === 'admin' ? 'admin' : 'user';
+      const role = username === 'phoenix_7x' ? 'admin' : 'user';
       set({ 
         isAuthenticated: true, 
         userRole: role,

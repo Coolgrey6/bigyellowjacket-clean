@@ -1,8 +1,17 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { Shield } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Shield, LogOut, User } from 'lucide-react';
+import { useWebSocketStore } from '../../hooks/useWebSocket';
 
 export const Header: React.FC = () => {
+  const { isAuthenticated, userRole, logout } = useWebSocketStore();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
+
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
       <div className="px-6 py-4">
@@ -21,6 +30,29 @@ export const Header: React.FC = () => {
             </div>
           </Link>
           <div className="flex items-center space-x-4">
+            {isAuthenticated ? (
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2 text-sm text-gray-600">
+                  <User className="w-4 h-4" />
+                  <span>Logged in as: <span className="font-medium text-gray-900">{userRole}</span></span>
+                </div>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center space-x-1 px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className="flex items-center space-x-1 px-4 py-2 text-sm bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-colors"
+              >
+                <User className="w-4 h-4" />
+                Login
+              </Link>
+            )}
             <div className="text-right">
               <div className="text-sm text-gray-600">Status</div>
               <div className="flex items-center space-x-2">

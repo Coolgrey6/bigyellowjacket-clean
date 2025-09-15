@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './Auth.css';
 
 interface LoginFormProps {
-  onLogin: (user: { username: string; role: string }) => void;
+  onLogin: (user: { username: string; role: string; password: string }) => void;
 }
 
 export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
@@ -20,20 +20,23 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
     setIsLoading(true);
     setError('');
 
-    // Simulate API call
-    setTimeout(() => {
-      // Demo credentials
-      if (formData.username === 'admin' && formData.password === 'admin123') {
-        onLogin({ username: 'admin', role: 'admin' });
-        navigate('/app');
-      } else if (formData.username === 'user' && formData.password === 'user123') {
-        onLogin({ username: 'user', role: 'user' });
-        navigate('/app');
-      } else {
-        setError('Invalid username or password');
-      }
-      setIsLoading(false);
-    }, 1000);
+    // Demo credentials with random usernames and unique strong passwords
+    const validCredentials = {
+      'phoenix_7x': 'SecureNet@2024#Phoenix!',
+      'storm_delta': 'CyberGuard$2024*Storm&',
+      'cyber_wolf': 'FireWall!2024@Wolf#Secure',
+      'shadow_ops': 'NetShield%2024^Shadow*Ops'
+    };
+
+    if (validCredentials[formData.username as keyof typeof validCredentials] === formData.password) {
+      const role = formData.username === 'phoenix_7x' ? 'admin' : 'user';
+      await onLogin({ username: formData.username, role, password: formData.password });
+      navigate('/app');
+    } else {
+      setError('Invalid username or password');
+    }
+    
+    setIsLoading(false);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -97,13 +100,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
         </form>
 
         <div className="auth-demo">
-          <h4>Demo Credentials:</h4>
+          <h4>Demo Access Available</h4>
           <div className="demo-credentials">
             <div className="demo-account">
-              <strong>Admin:</strong> admin / admin123
+              <strong>Contact your system administrator for demo credentials</strong>
             </div>
             <div className="demo-account">
-              <strong>User:</strong> user / user123
+              <em>Multiple account types available: Admin, Security, Firewall, Operations</em>
             </div>
           </div>
         </div>
