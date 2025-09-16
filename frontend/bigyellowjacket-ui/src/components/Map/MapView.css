@@ -22,4 +22,17 @@
   font-weight: 700;
   margin-bottom: 4px;
 }
+.byj-links {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.byj-links a {
+  color: #2563eb;
+  text-decoration: none;
+}
+.byj-links a:hover { text-decoration: underline; }
+.byj-spoof { margin-top: 6px; font-weight: 600; }
+.byj-spoof.ok { color: #16a34a; }
+.byj-spoof.warn { color: #dc2626; }
 
