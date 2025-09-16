@@ -28,7 +28,7 @@ export const useWebSocket = create<WebSocketStore>((set, get) => ({
       const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       const wsUrl = envWsUrl && envWsUrl.trim().length > 0
         ? envWsUrl
-        : (isLocalhost ? 'ws://localhost:5173/ws' : 'wss://bigyellowjacket.com:8443/ws');
+        : (isLocalhost ? 'wss://localhost:9443/ws' : 'wss://bigyellowjacket.com:9443/ws');
       
       const socket = new WebSocket(wsUrl);
 

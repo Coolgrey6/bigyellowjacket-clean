@@ -107,7 +107,7 @@ class ApiService {
     const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     this.baseUrl = isLocalhost 
       ? '/api' 
-      : 'https://bigyellowjacket.com/api';
+      : 'https://bigyellowjacket.com:8443/api';
   }
 
   private async request<T>(

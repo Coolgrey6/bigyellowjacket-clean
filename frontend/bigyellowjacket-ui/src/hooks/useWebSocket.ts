@@ -333,7 +333,7 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
       const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
       const wsUrl = envWsUrl && envWsUrl.trim().length > 0
         ? envWsUrl
-        : (isLocalhost ? 'ws://localhost:5173/ws' : 'wss://bigyellowjacket.com:8443/ws');
+        : (isLocalhost ? 'wss://localhost:9443/ws' : 'wss://bigyellowjacket.com:9443/ws');
       console.log('🔍 WebSocket connection details:', {
         url: wsUrl,
         currentTime: new Date().toISOString(),
