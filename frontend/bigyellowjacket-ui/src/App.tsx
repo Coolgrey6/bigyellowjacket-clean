@@ -14,6 +14,9 @@ import { TrafficMonitor } from './components/TrafficMonitor/TrafficMonitor';
 import { FirewallDashboard } from './components/Firewall';
 import { PortBlocker } from './components/PortBlocker/PortBlocker';
 import { LiveAttackFeed } from './components/LiveAttackFeed/LiveAttackFeed';
+import { Alerts } from './components/Alerts/Alerts';
+import { Data } from './components/Data/Data';
+import { Settings } from './components/Settings/Settings';
 import { TestPage } from './TestPage';
 import { useWebSocketStore } from './hooks/useWebSocket';
 
@@ -79,9 +82,9 @@ function App() {
               <Route path="logs" element={<LogsViewer />} />
               <Route path="traffic" element={<TrafficMonitor />} />
               <Route path="test" element={<TestPage />} />
-          <Route path="alerts" element={<div>Alerts Page</div>} />
-          <Route path="data" element={<div>Data Page</div>} />
-          <Route path="settings" element={<div>Settings Page</div>} />
+              <Route path="alerts" element={<Alerts />} />
+              <Route path="data" element={<Data />} />
+              <Route path="settings" element={<Settings />} />
         </Route>
       </Routes>
     </BrowserRouter>
