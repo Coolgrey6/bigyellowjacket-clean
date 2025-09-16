@@ -13,6 +13,7 @@ export const Sidebar: React.FC = () => {
     { path: '/app/firewall', label: 'Firewall' },
     { path: '/app/ports', label: 'Port Blocker' },
     { path: '/app/logs', label: 'Logs' },
+    { path: '/app/map', label: 'Map' },
   ];
 
   return (

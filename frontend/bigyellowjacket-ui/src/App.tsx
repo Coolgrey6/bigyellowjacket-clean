@@ -18,6 +18,7 @@ import { Alerts } from './components/Alerts/Alerts';
 import { Data } from './components/Data/Data';
 import { Settings } from './components/Settings/Settings';
 import { TestPage } from './TestPage';
+import MapView from './components/Map/MapView';
 import { useWebSocketStore } from './hooks/useWebSocket';
 
 // Protected Route Component
@@ -85,6 +86,7 @@ function App() {
               <Route path="alerts" element={<Alerts />} />
               <Route path="data" element={<Data />} />
               <Route path="settings" element={<Settings />} />
+              <Route path="map" element={<MapView />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -19,6 +19,8 @@ interface AttackEvent {
   process?: string;
   userAgent?: string;
   referer?: string;
+  lat?: number;
+  lon?: number;
 }
 
 export const LiveAttackFeed: React.FC = () => {
@@ -49,13 +51,33 @@ export const LiveAttackFeed: React.FC = () => {
       'São Paulo', 'Mumbai', 'Paris', 'Toronto', 'Sydney', 'Amsterdam'
     ];
     
+    const cityToLatLon: Record<string, { lat: number; lon: number }> = {
+      'New York': { lat: 40.7128, lon: -74.0060 },
+      'Beijing': { lat: 39.9042, lon: 116.4074 },
+      'Moscow': { lat: 55.7558, lon: 37.6173 },
+      'Berlin': { lat: 52.5200, lon: 13.4050 },
+      'London': { lat: 51.5074, lon: -0.1278 },
+      'Tokyo': { lat: 35.6762, lon: 139.6503 },
+      'São Paulo': { lat: -23.5505, lon: -46.6333 },
+      'Mumbai': { lat: 19.0760, lon: 72.8777 },
+      'Paris': { lat: 48.8566, lon: 2.3522 },
+      'Toronto': { lat: 43.6532, lon: -79.3832 },
+      'Sydney': { lat: -33.8688, lon: 151.2093 },
+      'Amsterdam': { lat: 52.3676, lon: 4.9041 },
+    };
+    
     const protocols = ['TCP', 'UDP', 'HTTP', 'HTTPS', 'FTP', 'SSH', 'SMTP'];
     const severities: ('low' | 'medium' | 'high' | 'critical')[] = ['low', 'medium', 'high', 'critical'];
     const statuses: ('blocked' | 'allowed' | 'monitoring')[] = ['blocked', 'allowed', 'monitoring'];
     
     const now = new Date();
     const randomIP = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
-    
+    const city = cities[Math.floor(Math.random() * cities.length)];
+    const country = countries[Math.floor(Math.random() * countries.length)];
+    const base = cityToLatLon[city] || { lat: 37.7749, lon: -122.4194 };
+    // Add a tiny jitter so markers in same city don't overlap
+    const jitter = () => (Math.random() - 0.5) * 0.2; // ~0.2 degrees
+
     return {
       id: `attack_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ip: randomIP,
@@ -64,14 +86,16 @@ export const LiveAttackFeed: React.FC = () => {
       attackType: attackTypes[Math.floor(Math.random() * attackTypes.length)],
       severity: severities[Math.floor(Math.random() * severities.length)],
       timestamp: now.toISOString(),
-      country: countries[Math.floor(Math.random() * countries.length)],
-      city: cities[Math.floor(Math.random() * cities.length)],
+      country,
+      city,
       bytesTransferred: Math.floor(Math.random() * 1000000) + 1000,
       duration: Math.floor(Math.random() * 300) + 1,
       status: statuses[Math.floor(Math.random() * statuses.length)],
       process: Math.random() > 0.5 ? 'chrome.exe' : 'firefox.exe',
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      referer: Math.random() > 0.5 ? 'https://google.com' : undefined
+      referer: Math.random() > 0.5 ? 'https://google.com' : undefined,
+      lat: base.lat + jitter(),
+      lon: base.lon + jitter(),
     };
   };
 
@@ -124,6 +148,27 @@ export const LiveAttackFeed: React.FC = () => {
 
     setFilteredAttacks(filtered);
   }, [attacks, searchTerm, severityFilter, statusFilter]);
+
+  // Push markers to the global for the map to consume
+  useEffect(() => {
+    const points = filteredAttacks
+      .filter(a => typeof a.lat === 'number' && typeof a.lon === 'number')
+      .map(a => ({
+        lat: a.lat as number,
+        lon: a.lon as number,
+        label: `${a.city || ''} ${a.country || ''}`.trim(),
+        ip: a.ip,
+        attackType: a.attackType,
+        severity: a.severity,
+        city: a.city,
+        country: a.country,
+        timestamp: a.timestamp,
+        status: a.status,
+        port: a.port,
+        protocol: a.protocol,
+      }));
+    (window as any).BYJ_DEMO_POINTS = points;
+  }, [filteredAttacks]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
