@@ -39,10 +39,8 @@ export const LiveAttackFeed: React.FC = () => {
         console.log(`✅ Successfully auto-blocked IP: ${ip}`);
         setBlockedIPs(prev => [...prev, ip]);
         
-        // Show notification
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`🚫 Auto-blocked IP ${ip} for country spoofing!`);
-        }
+        // Auto-block silently - no alert needed
+        console.log(`🚫 Auto-blocked IP ${ip} for country spoofing!`);
       } else {
         console.error(`❌ Failed to auto-block IP: ${ip}`, response.statusText);
       }
@@ -184,7 +182,7 @@ export const LiveAttackFeed: React.FC = () => {
     if (!anyWindow.BYJ_DEMO_POINTS) {
       anyWindow.BYJ_DEMO_POINTS = [];
     }
-    anyWindow.BYJ_DEMO_POINTS = [attack, ...anyWindow.BYJ_DEMO_POINTS].slice(0, 200); // Keep last 200 attacks for timeline
+    anyWindow.BYJ_DEMO_POINTS = [attack, ...anyWindow.BYJ_DEMO_POINTS]; // No limit - keep all attacks
 
     // Block ALL attacks after a short delay (so they appear on map first)
     setTimeout(() => {
@@ -197,12 +195,9 @@ export const LiveAttackFeed: React.FC = () => {
 
   // Generate initial attack data
   useEffect(() => {
-    const initialAttacks: AttackEvent[] = [];
-    for (let i = 0; i < 20; i++) {
-      initialAttacks.push(generateAttackEvent());
-    }
-    setAttacks(initialAttacks);
-    setAttackCount(initialAttacks.length);
+    // Start with empty attacks - begin at 0
+    setAttacks([]);
+    setAttackCount(0);
   }, []);
 
   // Auto-generate new attacks
@@ -211,7 +206,7 @@ export const LiveAttackFeed: React.FC = () => {
 
     const interval = setInterval(() => {
       const newAttack = generateAttackEvent();
-      setAttacks(prev => [newAttack, ...prev].slice(0, 100)); // Keep last 100 attacks
+      setAttacks(prev => [newAttack, ...prev]); // Keep all attacks
       setAttackCount(prev => prev + 1);
     }, Math.random() * 3000 + 1000); // Random interval between 1-4 seconds
 

@@ -39,12 +39,13 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   const defaultCenter: [number, number] = [37.7749, -122.4194];
   
   // Time slider state
-  const [timeSliderValue, setTimeSliderValue] = useState(100); // 0-100 percentage
+  const [timeSliderValue, setTimeSliderValue] = useState(0); // Start at 0% (beginning)
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(1); // 1x, 2x, 4x speed
   const [allAttacks, setAllAttacks] = useState<AttackPoint[]>([]);
   const [filteredAttacks, setFilteredAttacks] = useState<AttackPoint[]>([]);
-  const [isTimelineMinimized, setIsTimelineMinimized] = useState(false);
+  const [isTimelineMinimized, setIsTimelineMinimized] = useState(true);
+  const [timelineRange, setTimelineRange] = useState({ min: 0, max: 100 }); // Dynamic range
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Minimal country bounding boxes for spoof-check demo (expand as needed)
@@ -105,10 +106,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           auto_blocked: true
         });
         
-        // Show notification
-        if (typeof window !== 'undefined' && window.alert) {
-          window.alert(`🚫 Auto-blocked IP ${ip} for country spoofing!`);
-        }
+        // Auto-block silently - no alert needed
+        console.log(`🚫 Auto-blocked IP ${ip} for country spoofing!`);
       } else {
         console.error(`❌ Failed to auto-block IP: ${ip}`, response.statusText);
       }
@@ -148,7 +147,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     const lastTime = new Date(sortedAttacks[sortedAttacks.length - 1].timestamp || 0).getTime();
     const timeRange = lastTime - firstTime;
     
-    // Calculate cutoff time based on percentage
+    // Calculate cutoff time based on percentage within the current timeline range
+    const rangeTime = firstTime + (timeRange * timePercentage / 100);
     const cutoffTime = firstTime + (timeRange * timePercentage / 100);
     
     // Filter attacks that occurred before or at the cutoff time
@@ -171,7 +171,7 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
 
   const [markers, setMarkers] = useState<AttackPoint[]>(initialMarkers);
 
-  // Poll the global every 500ms to reflect live feed updates (faster sync)
+  // Poll the global every 300ms to reflect live feed updates (even faster sync)
   useEffect(() => {
     const interval = setInterval(() => {
       const anyWindow = window as any;
@@ -186,14 +186,69 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           
           if (hasNewAttacks) {
             console.log('🔄 New attacks detected, updating timeline:', demo.length, 'attacks');
+            
+            // Auto-scale timeline: keep slider at current position relative to new data
+            const sortedAttacks = [...demo].sort((a, b) => {
+              const timeA = new Date(a.timestamp || 0).getTime();
+              const timeB = new Date(b.timestamp || 0).getTime();
+              return timeA - timeB;
+            });
+            
+            if (sortedAttacks.length > 0) {
+              const firstTime = new Date(sortedAttacks[0].timestamp || 0).getTime();
+              const lastTime = new Date(sortedAttacks[sortedAttacks.length - 1].timestamp || 0).getTime();
+              const timeRange = lastTime - firstTime;
+              
+              // Update timeline range to accommodate new data
+              setTimelineRange({ min: 0, max: 100 });
+              
+              // If we're at live position (95%+), stay at live and focus on new attack
+              if (timeSliderValue >= 95) {
+                setTimeSliderValue(100);
+                // Focus on the latest attack immediately
+                setTimeout(() => {
+                  focusOnCurrentMarker();
+                }, 100);
+              } else {
+                // Keep current position for historical viewing
+                setTimeSliderValue(timeSliderValue);
+              }
+            }
+            
             return demo;
           }
           return prevAttacks;
         });
       }
-    }, 500); // Faster polling for better sync
+    }, 300); // Even faster polling for better sync
     return () => clearInterval(interval);
-  }, []);
+  }, [timeSliderValue]);
+
+  // Focus on the marker that matches the current timeline position
+  const focusOnCurrentMarker = () => {
+    if (filteredAttacks.length > 0) {
+      // Find the most recent attack in the filtered set (closest to timeline position)
+      const sortedFiltered = [...filteredAttacks].sort((a, b) => {
+        const timeA = new Date(a.timestamp || 0).getTime();
+        const timeB = new Date(b.timestamp || 0).getTime();
+        return timeB - timeA; // Most recent first
+      });
+      
+      if (sortedFiltered.length > 0) {
+        const currentMarker = sortedFiltered[0];
+        const map = document.querySelector('.leaflet-container') as any;
+        if (map && map._leaflet_id) {
+          const leafletMap = (window as any).L?.Map?.get(map._leaflet_id);
+          if (leafletMap) {
+            leafletMap.flyTo([currentMarker.lat, currentMarker.lon], 8, { 
+              animate: true, 
+              duration: 1 
+            });
+          }
+        }
+      }
+    }
+  };
 
   // Update filtered attacks when allAttacks or timeSliderValue changes
   useEffect(() => {
@@ -201,17 +256,25 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
       const filtered = filterAttacksByTime(allAttacks, timeSliderValue);
       setFilteredAttacks(filtered);
       setMarkers(filtered);
+      
+      // Focus on the current timeline marker
+      setTimeout(() => {
+        focusOnCurrentMarker();
+      }, 100); // Small delay to ensure markers are rendered
     }
   }, [allAttacks, timeSliderValue]);
 
   // Auto-update time slider to show latest attacks when new ones arrive
   useEffect(() => {
     if (allAttacks.length > 0 && !isPlaying) {
-      // If we're at 100% and new attacks arrive, stay at 100%
-      // If we're not at 100%, we can optionally auto-advance
-      // For now, let's keep the current position unless user is at 100%
+      // Auto-advance timeline to show new attacks in real-time
+      // Only advance if we're near the end (within 5% of current position)
       if (timeSliderValue >= 95) {
-        setTimeSliderValue(100);
+        setTimeSliderValue(100); // Show latest attacks
+        // Focus on the latest attack immediately
+        setTimeout(() => {
+          focusOnCurrentMarker();
+        }, 200);
       }
     }
   }, [allAttacks.length, isPlaying, timeSliderValue]);
@@ -275,13 +338,19 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     const currentTime = firstTime + (timeRange * timeSliderValue / 100);
     
     const currentDate = new Date(currentTime);
-    const firstDate = new Date(firstTime);
-    const lastDate = new Date(lastTime);
+    const now = new Date();
+    const timeDiff = now.getTime() - currentTime;
     
-    if (timeSliderValue === 0) {
-      return firstDate.toLocaleTimeString();
-    } else if (timeSliderValue === 100) {
-      return lastDate.toLocaleTimeString();
+    // Show relative time for infinite timeline
+    if (timeSliderValue >= 95) {
+      return 'Live';
+    } else if (timeSliderValue === 0) {
+      return 'Start';
+    } else if (timeDiff < 60000) { // Less than 1 minute
+      return 'Just now';
+    } else if (timeDiff < 3600000) { // Less than 1 hour
+      const minutes = Math.floor(timeDiff / 60000);
+      return `${minutes}m ago`;
     } else {
       return currentDate.toLocaleTimeString();
     }
@@ -339,7 +408,13 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   const AttackMarkerInner: React.FC<{ p: AttackPoint; icon: L.DivIcon }> = ({ p, icon }) => {
     const map = useMap();
     const onClick = () => {
-      try { map.flyTo([p.lat, p.lon], 8, { animate: true }); } catch {}
+      try { 
+        // Zoom to street view level (zoom 18-20) for detailed view
+        map.flyTo([p.lat, p.lon], 18, { 
+          animate: true, 
+          duration: 1.5 
+        }); 
+      } catch {}
     };
     const spoof = isPointInCountry(p.lat, p.lon, p.country);
     
@@ -469,68 +544,113 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
 
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
-      {/* Time Slider Controls */}
-      <div className={`time-slider-controls ${isTimelineMinimized ? 'minimized' : ''}`}>
-        <div className="time-slider-header">
-          <h3>Attack Timeline</h3>
-          <div className="time-info">
-            <span>Showing {filteredAttacks.length} of {allAttacks.length} attacks</span>
-            <span>Time: {getCurrentTimeDisplay()}</span>
-            <span>Last Update: {new Date().toLocaleTimeString()}</span>
-            <span className="sync-status">🔄 Live Sync</span>
-          </div>
-          <button 
-            className="minimize-button"
-            onClick={() => setIsTimelineMinimized(!isTimelineMinimized)}
-            title={isTimelineMinimized ? 'Expand Timeline' : 'Minimize Timeline'}
-          >
-            {isTimelineMinimized ? '⬆️' : '⬇️'}
-          </button>
-        </div>
-        
-        {!isTimelineMinimized && (
-          <>
-            <div className="time-slider-container">
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={timeSliderValue}
-                onChange={(e) => handleTimeSliderChange(Number(e.target.value))}
-                className="time-slider"
-              />
-              <div className="time-labels">
-                <span>Start</span>
-                <span>End</span>
+      {/* Minimized Timeline Button */}
+      {isTimelineMinimized && (
+        <button 
+          className="timeline-minimize-button"
+          onClick={() => setIsTimelineMinimized(false)}
+          title="Expand Timeline"
+        >
+          <div className="timeline-minimize-content">
+            <div className="timeline-minimize-icon">⏱️</div>
+            <div className="timeline-minimize-stats">
+              <div className="timeline-minimize-count">{filteredAttacks.length}/{allAttacks.length}</div>
+              <div className={`timeline-minimize-status ${timeSliderValue >= 95 ? 'live' : ''}`}>
+                {timeSliderValue >= 95 ? '🔴' : '🔄'}
               </div>
             </div>
-            
-            <div className="playback-controls">
-              <button
-                onClick={isPlaying ? stopPlayback : startPlayback}
-                className={`play-button ${isPlaying ? 'playing' : ''}`}
-              >
-                {isPlaying ? '⏸️ Pause' : '▶️ Play'}
-              </button>
-              <button onClick={resetPlayback} className="reset-button">
-                🔄 Reset
-              </button>
-              <select
-                value={playbackSpeed}
-                onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
-                className="speed-select"
-              >
-                <option value={0.5}>0.5x</option>
-                <option value={1}>1x</option>
-                <option value={2}>2x</option>
-                <option value={4}>4x</option>
-              </select>
-            </div>
-          </>
-        )}
-      </div>
+          </div>
+        </button>
+      )}
 
-      <MapContainer center={defaultCenter} zoom={5} style={{ height: '80vh', width: '100%' }}>
+      {/* Time Slider Controls - Expanded */}
+      {!isTimelineMinimized && (
+        <div className="time-slider-controls expanded">
+          <div className="time-slider-header">
+            <h3>Attack Timeline</h3>
+            <div className="time-info">
+              <span>Showing {filteredAttacks.length} of {allAttacks.length} attacks</span>
+              <span>Time: {getCurrentTimeDisplay()}</span>
+              <span>Last Update: {new Date().toLocaleTimeString()}</span>
+              <span className={`sync-status ${timeSliderValue >= 95 ? 'live' : ''}`}>
+                {timeSliderValue >= 95 ? '🔴 LIVE' : '🔄 Live Sync'}
+              </span>
+            </div>
+            <button 
+              className="minimize-button"
+              onClick={() => setIsTimelineMinimized(true)}
+              title="Minimize Timeline"
+            >
+              ⬇️
+            </button>
+          </div>
+          
+          <div className="time-slider-container">
+            <input
+              type="range"
+              min={timelineRange.min}
+              max={timelineRange.max}
+              value={timeSliderValue}
+              onChange={(e) => handleTimeSliderChange(Number(e.target.value))}
+              className="time-slider"
+            />
+            <div className="time-labels">
+              <span>Start</span>
+              <span>Live</span>
+            </div>
+          </div>
+          
+          <div className="playback-controls">
+            <button
+              onClick={isPlaying ? stopPlayback : startPlayback}
+              className={`play-button ${isPlaying ? 'playing' : ''}`}
+            >
+              {isPlaying ? '⏸️ Pause' : '▶️ Play'}
+            </button>
+            <button onClick={resetPlayback} className="reset-button">
+              🔄 Reset
+            </button>
+            <button 
+              onClick={() => {
+                setTimeSliderValue(100); // Jump to live
+                focusOnCurrentMarker(); // Focus on latest attack
+              }}
+              className="follow-live-button"
+              title="Follow Live Attacks"
+            >
+              🔴 Follow Live
+            </button>
+            <button 
+              onClick={() => {
+                const map = document.querySelector('.leaflet-container') as any;
+                if (map && map._leaflet_id) {
+                  // Access the map instance and zoom to world view
+                  const leafletMap = (window as any).L?.Map?.get(map._leaflet_id);
+                  if (leafletMap) {
+                    leafletMap.setView([20, 0], 2, { animate: true, duration: 1.5 });
+                  }
+                }
+              }}
+              className="world-view-button"
+              title="Zoom to World View"
+            >
+              🌍 World
+            </button>
+            <select
+              value={playbackSpeed}
+              onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
+              className="speed-select"
+            >
+              <option value={0.5}>0.5x</option>
+              <option value={1}>1x</option>
+              <option value={2}>2x</option>
+              <option value={4}>4x</option>
+            </select>
+          </div>
+        </div>
+      )}
+
+      <MapContainer center={defaultCenter} zoom={5} style={{ height: isTimelineMinimized ? '100vh' : 'calc(100vh - 350px)', width: '100%' }}>
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

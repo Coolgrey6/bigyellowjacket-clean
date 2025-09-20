@@ -27,6 +27,14 @@ export default defineConfig(() => {
       https: httpsConfig,
       port: Number(process.env.PORT || 5173),
       host: true,
+      hmr: {
+        port: 5173,
+        host: 'localhost',
+      },
+      watch: {
+        usePolling: true,
+        interval: 1000,
+      },
       proxy: haveCerts
         ? {
             '/api': {
@@ -40,7 +48,17 @@ export default defineConfig(() => {
               changeOrigin: true,
             },
           }
-        : undefined,
+        : {
+            '/api': {
+              target: 'http://localhost:8083',
+              changeOrigin: true,
+            },
+            '/ws': {
+              target: 'ws://localhost:8766',
+              ws: true,
+              changeOrigin: true,
+            },
+          },
     },
   }
 })

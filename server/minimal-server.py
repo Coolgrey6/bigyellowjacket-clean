@@ -1,93 +1,32 @@
 #!/usr/bin/env python3
 """
-Production server for Big Yellow Jacket Security
-Serves both the frontend static files and WebSocket backend
+Minimal server for Big Yellow Jacket Security
 """
 
 import asyncio
 import json
-import os
-import signal
 import time
-from typing import Any, Dict, List
+from aiohttp import web, WSMsgType
 from pathlib import Path
 
-try:
-    import psutil  # type: ignore
-except Exception:  # pragma: no cover
-    psutil = None  # Fallback if psutil is unavailable
-
-import websockets
-from aiohttp import web, WSMsgType
-import aiohttp_cors
-
-# Import our new modules
-from src.analyzers.advanced_threat_detector import AdvancedThreatDetector
-from src.core.alert_system import AlertSystem, AlertType, AlertSeverity
-from src.core.secure_firewall import SecureFirewallManager
-from src.api.rest_api import SecurityAPI
-
 # Configuration
-HOST = os.environ.get("BYJ_HOST", "0.0.0.0")
-PORT = int(os.environ.get("BYJ_PORT", "8766"))
-FRONTEND_PORT = int(os.environ.get("BYJ_FRONTEND_PORT", "8080"))
-
-# Paths
+HOST = "0.0.0.0"
+PORT = 8082
 FRONTEND_DIST_PATH = Path(__file__).parent.parent / "frontend" / "bigyellowjacket-ui" / "dist"
 
-def get_system_metrics() -> Dict[str, Any]:
+def get_system_metrics():
     """Get system metrics for the dashboard"""
-    if psutil is None:
-        return {
-            "system": {
-                "cpu": {"percent": 0, "cores": 0, "frequency": 0},
-                "memory": {"total": 0, "used": 0, "percent": 0},
-                "disk": {"total": 0, "used": 0, "percent": 0},
-                "network": {"bytes_sent": 0, "bytes_recv": 0},
-            }
+    return {
+        "system": {
+            "cpu": {"percent": 25.5, "cores": 8, "frequency": 2400},
+            "memory": {"total": 16777216, "used": 8388608, "percent": 50.0},
+            "disk": {"total": 1000000000, "used": 500000000, "percent": 50.0},
+            "network": {"bytes_sent": 1024000, "bytes_recv": 2048000},
         }
+    }
 
-    try:
-        cpu_percent = psutil.cpu_percent(interval=None)
-        cpu_freq = getattr(psutil.cpu_freq(), "current", 0) if hasattr(psutil, "cpu_freq") else 0
-        virtual_mem = psutil.virtual_memory()
-        disk = psutil.disk_usage("/")
-        net = psutil.net_io_counters()
-        return {
-            "system": {
-                "cpu": {
-                    "percent": float(cpu_percent or 0),
-                    "cores": int(psutil.cpu_count() or 0),
-                    "frequency": float(cpu_freq or 0),
-                },
-                "memory": {
-                    "total": int(getattr(virtual_mem, "total", 0) or 0),
-                    "used": int(getattr(virtual_mem, "used", 0) or 0),
-                    "percent": float(getattr(virtual_mem, "percent", 0) or 0),
-                },
-                "disk": {
-                    "total": int(getattr(disk, "total", 0) or 0),
-                    "used": int(getattr(disk, "used", 0) or 0),
-                    "percent": float(getattr(disk, "percent", 0) or 0),
-                },
-                "network": {
-                    "bytes_sent": int(getattr(net, "bytes_sent", 0) or 0),
-                    "bytes_recv": int(getattr(net, "bytes_recv", 0) or 0),
-                },
-            }
-        }
-    except Exception:
-        return {
-            "system": {
-                "cpu": {"percent": 0, "cores": 0, "frequency": 0},
-                "memory": {"total": 0, "used": 0, "percent": 0},
-                "disk": {"total": 0, "used": 0, "percent": 0},
-                "network": {"bytes_sent": 0, "bytes_recv": 0},
-            }
-        }
-
-def get_connections_sample() -> List[Dict[str, Any]]:
-    """Provide sample connections data"""
+def get_connections_sample():
+    """Get sample connections data"""
     return [
         {
             "host": "127.0.0.1",
@@ -95,15 +34,15 @@ def get_connections_sample() -> List[Dict[str, Any]]:
             "protocol": "TCP",
             "process": "byj",
             "status": "ESTABLISHED",
-            "bytes_sent": 0,
-            "bytes_received": 0,
+            "bytes_sent": 1024,
+            "bytes_received": 2048,
             "latency": 10,
             "last_seen": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
     ]
 
 async def websocket_handler(request):
-    """Handle WebSocket connections"""
+    """WebSocket handler for real-time updates"""
     ws = web.WebSocketResponse()
     await ws.prepare(request)
     
@@ -177,8 +116,16 @@ async def index_handler(request):
     else:
         return web.Response(text="Frontend not found. Please run 'npm run build' first.", status=404)
 
+async def spa_handler(request):
+    """Handle client-side routing for React app"""
+    index_path = FRONTEND_DIST_PATH / "index.html"
+    if index_path.exists():
+        return web.FileResponse(index_path)
+    else:
+        return web.Response(text="Frontend not found. Please run 'npm run build' first.", status=404)
+
 async def api_threats_handler(request):
-    """Simple API endpoint for threats"""
+    """API endpoint for threats"""
     return web.json_response({
         "threats": [],
         "total": 0,
@@ -186,7 +133,7 @@ async def api_threats_handler(request):
     })
 
 async def api_block_ip_handler(request):
-    """Simple API endpoint for blocking IPs"""
+    """API endpoint for blocking IPs"""
     try:
         data = await request.json()
         ip = data.get('ip', '')
@@ -202,65 +149,24 @@ async def api_block_ip_handler(request):
             "error": str(e)
         }, status=400)
 
-async def spa_handler(request):
-    """Handle client-side routing for React app"""
-    index_path = FRONTEND_DIST_PATH / "index.html"
-    if index_path.exists():
-        return web.FileResponse(index_path)
-    else:
-        return web.Response(text="Frontend not found. Please run 'npm run build' first.", status=404)
-
 async def create_app():
-    """Create the aiohttp application"""
+    """Create the web application"""
     app = web.Application()
     
-    # Initialize security components
-    threat_detector = AdvancedThreatDetector()
-    alert_system = AlertSystem()
-    secure_firewall = SecureFirewallManager()
-    security_api = SecurityAPI()
-    
-    # Store components in app context
-    app['threat_detector'] = threat_detector
-    app['alert_system'] = alert_system
-    app['secure_firewall'] = secure_firewall
-    
-    # Configure CORS
-    cors = aiohttp_cors.setup(app, defaults={
-        "*": aiohttp_cors.ResourceOptions(
-            allow_credentials=True,
-            expose_headers="*",
-            allow_headers="*",
-            allow_methods="*"
-        )
-    })
-    
-    # Add WebSocket handler
+    # Add routes
     app.router.add_get('/ws', websocket_handler)
-    
-    # Add simple API routes
     app.router.add_get('/api/threats', api_threats_handler)
     app.router.add_post('/api/threats/block-ip', api_block_ip_handler)
-    
-    # Add API routes
-    app.router.add_routes(security_api.app.router)
-    
-    # Add frontend routes
     app.router.add_get('/', index_handler)
     app.router.add_get('/app', spa_handler)
     app.router.add_get('/app/{path:.*}', spa_handler)
     app.router.add_static('/', FRONTEND_DIST_PATH)
     
-    # Add CORS to all routes
-    for route in list(app.router.routes()):
-        cors.add(route)
-    
     return app
 
 async def main():
     """Main function to run the server"""
-    print(f"[BYJ] Starting production server on http://{HOST}:{FRONTEND_PORT}")
-    print(f"[BYJ] WebSocket server on ws://{HOST}:{PORT}")
+    print(f"[BYJ] Starting minimal server on http://{HOST}:{PORT}")
     print(f"[BYJ] Frontend files from: {FRONTEND_DIST_PATH}")
     
     app = await create_app()
@@ -269,14 +175,16 @@ async def main():
     runner = web.AppRunner(app)
     await runner.setup()
     
-    site = web.TCPSite(runner, HOST, FRONTEND_PORT)
+    site = web.TCPSite(runner, HOST, PORT)
     await site.start()
+    
+    print(f"[BYJ] Server started successfully!")
     
     # Keep the server running
     try:
         await asyncio.Future()  # Run forever
     except KeyboardInterrupt:
-        print("\n[BYJ] Shutting down server...")
+        pass
     finally:
         await runner.cleanup()
 

@@ -178,7 +178,69 @@
   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
 }
 
-/* Time Slider Controls */
+/* Minimized Timeline Button */
+.timeline-minimize-button {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  z-index: 1000;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+  cursor: pointer;
+  min-width: 80px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.timeline-minimize-button:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.timeline-minimize-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.timeline-minimize-icon {
+  font-size: 20px;
+  margin-bottom: 2px;
+}
+
+.timeline-minimize-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.timeline-minimize-count {
+  font-size: 12px;
+  color: #374151;
+  font-weight: 600;
+}
+
+.timeline-minimize-status {
+  font-size: 14px;
+  color: #10b981;
+  animation: pulse 2s infinite;
+}
+
+.timeline-minimize-status.live {
+  color: #dc2626;
+}
+
+/* Time Slider Controls - Expanded */
 .time-slider-controls {
   position: absolute;
   top: 20px;
@@ -194,8 +256,52 @@
   transition: all 0.3s ease;
 }
 
-.time-slider-controls.minimized {
-  padding: 15px 20px;
+.time-slider-controls.expanded {
+  /* Compact overlay when expanded */
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #374151;
+  z-index: 2000;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+}
+
+/* Responsive design for expanded timeline */
+@media (max-width: 768px) {
+  .time-slider-controls.expanded {
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    max-height: 250px;
+    padding: 15px;
+  }
+  
+  .timeline-minimize-button {
+    top: 10px;
+    left: 10px;
+    min-width: 70px;
+    height: 50px;
+    padding: 8px 12px;
+  }
+  
+  .timeline-minimize-icon {
+    font-size: 16px;
+  }
+  
+  .timeline-minimize-count {
+    font-size: 10px;
+  }
+  
+  .timeline-minimize-status {
+    font-size: 12px;
+  }
 }
 
 .time-slider-header {
@@ -206,20 +312,23 @@
 }
 
 .minimize-button {
-  background: #6b7280;
-  color: white;
-  border: none;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
   border-radius: 6px;
   padding: 8px 12px;
   cursor: pointer;
   font-size: 14px;
   transition: all 0.2s ease;
   margin-left: 10px;
+  font-weight: 500;
 }
 
 .minimize-button:hover {
-  background: #4b5563;
+  background: #e5e7eb;
+  border-color: #9ca3af;
   transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .time-slider-header h3 {
@@ -234,12 +343,25 @@
   gap: 15px;
   font-size: 14px;
   color: #6b7280;
+  flex-wrap: wrap;
+}
+
+.time-info span {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .sync-status {
   color: #10b981 !important;
   font-weight: 600;
   animation: pulse 2s infinite;
+}
+
+.sync-status.live {
+  color: #dc2626 !important;
 }
 
 @keyframes pulse {
@@ -341,6 +463,26 @@
 
 .reset-button:hover {
   background: #4b5563;
+  transform: translateY(-1px);
+}
+
+.world-view-button {
+  background: #3b82f6;
+  color: white;
+}
+
+.world-view-button:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.follow-live-button {
+  background: #dc2626;
+  color: white;
+}
+
+.follow-live-button:hover {
+  background: #b91c1c;
   transform: translateY(-1px);
 }
 
