@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './MapView.css';
+import { LiveAttackFeed } from '../LiveAttackFeed/LiveAttackFeed';
 
 // Fix default icon paths for Leaflet in bundlers
 import L from 'leaflet';
@@ -46,6 +47,9 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   const [filteredAttacks, setFilteredAttacks] = useState<AttackPoint[]>([]);
   const [isTimelineMinimized, setIsTimelineMinimized] = useState(true);
   const [timelineRange, setTimelineRange] = useState({ min: 0, max: 100 }); // Dynamic range
+  const [pausedByMarker, setPausedByMarker] = useState(false); // Track if paused by marker click
+  const [markerKey, setMarkerKey] = useState(0); // Force marker re-render
+  const [followLatest, setFollowLatest] = useState(false); // Track if following latest marker
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Minimal country bounding boxes for spoof-check demo (expand as needed)
@@ -129,33 +133,19 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     }
   };
 
-  // Time filtering function based on actual timestamps
+  // Show ALL attacks - no filtering based on timeline
   const filterAttacksByTime = (attacks: AttackPoint[], timePercentage: number) => {
     if (attacks.length === 0) return attacks;
     
-    // Sort attacks by timestamp
+    // Sort attacks by timestamp (newest first for live display)
     const sortedAttacks = [...attacks].sort((a, b) => {
       const timeA = new Date(a.timestamp || 0).getTime();
       const timeB = new Date(b.timestamp || 0).getTime();
-      return timeA - timeB;
+      return timeB - timeA; // Newest first
     });
     
-    if (sortedAttacks.length === 0) return attacks;
-    
-    // Get time range
-    const firstTime = new Date(sortedAttacks[0].timestamp || 0).getTime();
-    const lastTime = new Date(sortedAttacks[sortedAttacks.length - 1].timestamp || 0).getTime();
-    const timeRange = lastTime - firstTime;
-    
-    // Calculate cutoff time based on percentage within the current timeline range
-    const rangeTime = firstTime + (timeRange * timePercentage / 100);
-    const cutoffTime = firstTime + (timeRange * timePercentage / 100);
-    
-    // Filter attacks that occurred before or at the cutoff time
-    return sortedAttacks.filter(attack => {
-      const attackTime = new Date(attack.timestamp || 0).getTime();
-      return attackTime <= cutoffTime;
-    });
+    // Always return all attacks - no filtering
+    return sortedAttacks;
   };
 
   // Pull any demo lat/lon data exposed on window for quick integration
@@ -205,10 +195,10 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
               // If we're at live position (95%+), stay at live and focus on new attack
               if (timeSliderValue >= 95) {
                 setTimeSliderValue(100);
-                // Focus on the latest attack immediately
-                setTimeout(() => {
-                  focusOnCurrentMarker();
-                }, 100);
+                // DISABLED - Do not auto-focus on markers
+                // setTimeout(() => {
+                //   focusOnCurrentMarker();
+                // }, 100);
               } else {
                 // Keep current position for historical viewing
                 setTimeSliderValue(timeSliderValue);
@@ -226,28 +216,9 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
 
   // Focus on the marker that matches the current timeline position
   const focusOnCurrentMarker = () => {
-    if (filteredAttacks.length > 0) {
-      // Find the most recent attack in the filtered set (closest to timeline position)
-      const sortedFiltered = [...filteredAttacks].sort((a, b) => {
-        const timeA = new Date(a.timestamp || 0).getTime();
-        const timeB = new Date(b.timestamp || 0).getTime();
-        return timeB - timeA; // Most recent first
-      });
-      
-      if (sortedFiltered.length > 0) {
-        const currentMarker = sortedFiltered[0];
-        const map = document.querySelector('.leaflet-container') as any;
-        if (map && map._leaflet_id) {
-          const leafletMap = (window as any).L?.Map?.get(map._leaflet_id);
-          if (leafletMap) {
-            leafletMap.flyTo([currentMarker.lat, currentMarker.lon], 8, { 
-              animate: true, 
-              duration: 1 
-            });
-          }
-        }
-      }
-    }
+    // DISABLED - Do not move the map automatically
+    // This prevents any unwanted map movement when timeline updates
+    return;
   };
 
   // Update filtered attacks when allAttacks or timeSliderValue changes
@@ -256,11 +227,45 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
       const filtered = filterAttacksByTime(allAttacks, timeSliderValue);
       setFilteredAttacks(filtered);
       setMarkers(filtered);
+      setMarkerKey(prev => prev + 1); // Force marker re-render
       
-      // Focus on the current timeline marker
-      setTimeout(() => {
-        focusOnCurrentMarker();
-      }, 100); // Small delay to ensure markers are rendered
+      // Debug: Log marker updates
+      console.log('Markers updated:', {
+        total: allAttacks.length,
+        filtered: filtered.length,
+        timeSlider: timeSliderValue,
+        markerKey: markerKey + 1,
+        followLatest,
+        markers: filtered.map(m => ({ 
+          lat: m.lat, 
+          lon: m.lon, 
+          severity: m.severity,
+          ip: m.ip,
+          attackType: m.attackType,
+          timestamp: m.timestamp
+        }))
+      });
+      
+      // Follow the latest marker if enabled
+      if (followLatest && filtered.length > 0) {
+        const latestMarker = filtered[0]; // First marker is the latest
+        const map = document.querySelector('.leaflet-container') as any;
+        if (map && map._leaflet_id) {
+          // Use the map instance to follow the latest marker
+          const leafletMap = map._leaflet;
+          if (leafletMap) {
+            leafletMap.flyTo([latestMarker.lat, latestMarker.lon], 12, {
+              duration: 1.0,
+              easeLinearity: 0.25
+            });
+          }
+        }
+      }
+      
+      // DISABLED - Do not auto-focus on markers
+      // setTimeout(() => {
+      //   focusOnCurrentMarker();
+      // }, 100);
     }
   }, [allAttacks, timeSliderValue]);
 
@@ -271,10 +276,10 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
       // Only advance if we're near the end (within 5% of current position)
       if (timeSliderValue >= 95) {
         setTimeSliderValue(100); // Show latest attacks
-        // Focus on the latest attack immediately
-        setTimeout(() => {
-          focusOnCurrentMarker();
-        }, 200);
+        // DISABLED - Do not auto-focus on markers
+        // setTimeout(() => {
+        //   focusOnCurrentMarker();
+        // }, 200);
       }
     }
   }, [allAttacks.length, isPlaying, timeSliderValue]);
@@ -284,6 +289,7 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     if (playbackIntervalRef.current) return;
     
     setIsPlaying(true);
+    setPausedByMarker(false); // Reset marker pause state when manually playing
     playbackIntervalRef.current = setInterval(() => {
       setTimeSliderValue(prev => {
         if (prev >= 100) {
@@ -405,15 +411,44 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     return null;
   };
 
-  const AttackMarkerInner: React.FC<{ p: AttackPoint; icon: L.DivIcon }> = ({ p, icon }) => {
+  const AttackMarkerInner: React.FC<{ p: AttackPoint; icon: L.DivIcon; isLatest?: boolean }> = ({ p, icon, isLatest = false }) => {
     const map = useMap();
+    
+    // Debug: Log marker component rendering
+    console.log(`AttackMarkerInner rendering:`, {
+      lat: p.lat,
+      lon: p.lon,
+      ip: p.ip,
+      severity: p.severity,
+      isLatest,
+      position: [p.lat, p.lon]
+    });
+    
     const onClick = () => {
       try { 
-        // Zoom to street view level (zoom 18-20) for detailed view
-        map.flyTo([p.lat, p.lon], 18, { 
-          animate: true, 
-          duration: 1.5 
-        }); 
+        // Pause the timeline when clicking a marker
+        setIsPlaying(false);
+        setPausedByMarker(true);
+        
+        // Stop any ongoing map movements/animations immediately
+        map.stop();
+        
+        // Zoom in to view the threat actor
+        map.flyTo([p.lat, p.lon], 15, {
+          duration: 1.5,
+          easeLinearity: 0.25
+        });
+        
+        // Add a brief visual feedback
+        const mapContainer = map.getContainer();
+        mapContainer.style.transition = 'all 0.1s ease';
+        mapContainer.style.transform = 'scale(0.98)';
+        
+        // Reset visual feedback
+        setTimeout(() => {
+          mapContainer.style.transform = 'scale(1)';
+          mapContainer.style.transition = 'all 0.3s ease';
+        }, 100);
       } catch {}
     };
     const spoof = isPointInCountry(p.lat, p.lon, p.country);
@@ -435,7 +470,10 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
       <Marker position={[p.lat, p.lon]} icon={icon} eventHandlers={{ click: onClick }}>
         <Popup maxWidth={400} className="byj-detailed-popup">
           <div className="byj-popup">
-            <div className="byj-popup-title">{p.attackType || 'Attack'} {p.severity ? `(${p.severity})` : ''}</div>
+            <div className="byj-popup-title">
+              {p.attackType || 'Attack'} {p.severity ? `(${p.severity})` : ''}
+              {isLatest && <span className="latest-badge">LATEST</span>}
+            </div>
             
             {/* Basic Attack Info */}
             <div className="byj-detail-section">
@@ -544,6 +582,11 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
 
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
+      {/* Hidden LiveAttackFeed to generate data in background */}
+      <div style={{ display: 'none' }}>
+        <LiveAttackFeed />
+      </div>
+      
       {/* Minimized Timeline Button */}
       {isTimelineMinimized && (
         <button 
@@ -555,8 +598,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             <div className="timeline-minimize-icon">⏱️</div>
             <div className="timeline-minimize-stats">
               <div className="timeline-minimize-count">{filteredAttacks.length}/{allAttacks.length}</div>
-              <div className={`timeline-minimize-status ${timeSliderValue >= 95 ? 'live' : ''}`}>
-                {timeSliderValue >= 95 ? '🔴' : '🔄'}
+              <div className={`timeline-minimize-status ${timeSliderValue >= 95 ? 'live' : ''} ${pausedByMarker ? 'paused-by-marker' : ''}`}>
+                {pausedByMarker ? '⏸️' : (timeSliderValue >= 95 ? '🔴' : '🔄')}
               </div>
             </div>
           </div>
@@ -572,8 +615,11 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
               <span>Showing {filteredAttacks.length} of {allAttacks.length} attacks</span>
               <span>Time: {getCurrentTimeDisplay()}</span>
               <span>Last Update: {new Date().toLocaleTimeString()}</span>
-              <span className={`sync-status ${timeSliderValue >= 95 ? 'live' : ''}`}>
-                {timeSliderValue >= 95 ? '🔴 LIVE' : '🔄 Live Sync'}
+              <span className={`sync-status ${timeSliderValue >= 95 ? 'live' : ''} ${pausedByMarker ? 'paused-by-marker' : ''}`}>
+                {pausedByMarker ? '⏸️ Paused by Marker' : (timeSliderValue >= 95 ? '🔴 LIVE' : '🔄 Live Sync')}
+              </span>
+              <span className="attack-rate">
+                Rate: {allAttacks.length > 0 ? Math.round(allAttacks.length / Math.max(1, (Date.now() - new Date(allAttacks[allAttacks.length - 1].timestamp || 0).getTime()) / 60000)) : 0}/min
               </span>
             </div>
             <button 
@@ -585,20 +631,29 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             </button>
           </div>
           
-          <div className="time-slider-container">
-            <input
-              type="range"
-              min={timelineRange.min}
-              max={timelineRange.max}
-              value={timeSliderValue}
-              onChange={(e) => handleTimeSliderChange(Number(e.target.value))}
-              className="time-slider"
-            />
-            <div className="time-labels">
-              <span>Start</span>
-              <span>Live</span>
+            <div className="time-slider-container">
+              <div className="timeline-progress">
+                <div className="timeline-bar">
+                  <div 
+                    className="timeline-fill" 
+                    style={{ width: `${timeSliderValue}%` }}
+                  ></div>
+                  <div className="timeline-marker" style={{ left: `${timeSliderValue}%` }}></div>
+                </div>
+                <input
+                  type="range"
+                  min={timelineRange.min}
+                  max={timelineRange.max}
+                  value={timeSliderValue}
+                  onChange={(e) => handleTimeSliderChange(Number(e.target.value))}
+                  className="time-slider"
+                />
+              </div>
+              <div className="time-labels">
+                <span>Start ({allAttacks.length > 0 ? new Date(allAttacks[allAttacks.length - 1].timestamp || 0).toLocaleTimeString() : 'No data'})</span>
+                <span>Live ({allAttacks.length > 0 ? new Date(allAttacks[0].timestamp || 0).toLocaleTimeString() : 'No data'})</span>
+              </div>
             </div>
-          </div>
           
           <div className="playback-controls">
             <button
@@ -613,7 +668,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             <button 
               onClick={() => {
                 setTimeSliderValue(100); // Jump to live
-                focusOnCurrentMarker(); // Focus on latest attack
+                // DISABLED - Do not auto-focus on markers
+                // focusOnCurrentMarker();
               }}
               className="follow-live-button"
               title="Follow Live Attacks"
@@ -636,6 +692,13 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             >
               🌍 World
             </button>
+            <button 
+              onClick={() => setFollowLatest(!followLatest)} 
+              className={`follow-latest-button ${followLatest ? 'active' : ''}`}
+              title={followLatest ? 'Stop Following Latest Marker' : 'Follow Latest Marker'}
+            >
+              {followLatest ? '📍 Following' : '📍 Follow Latest'}
+            </button>
             <select
               value={playbackSpeed}
               onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
@@ -655,8 +718,19 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <FitToMarkers pts={markers} />
+        {/* DISABLED - FitToMarkers was causing marker placement issues */}
+        {/* <FitToMarkers pts={markers} /> */}
+        
         {markers.map((p, idx) => {
+          // Debug: Log each marker being rendered
+          console.log(`Rendering marker ${idx}:`, {
+            lat: p.lat,
+            lon: p.lon,
+            ip: p.ip,
+            severity: p.severity,
+            position: [p.lat, p.lon]
+          });
+          
           const colorBySeverity: Record<string, string> = {
             critical: '#dc2626',
             high: '#f97316',
@@ -664,13 +738,40 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             low: '#16a34a',
           };
           const color = colorBySeverity[(p.severity || '').toLowerCase()] || '#dc2626';
+          const isLatest = idx === 0; // First marker is the latest
+          // Try a simpler approach with a basic colored circle
           const icon = L.divIcon({
-            className: 'byj-attack-icon-wrapper',
-            html: `<div class="byj-attack-icon" style="background:${color}">×</div>`,
+            className: 'byj-simple-marker',
+            html: `<div style="
+              width: 20px; 
+              height: 20px; 
+              background: ${color}; 
+              border-radius: 50%; 
+              border: 2px solid white; 
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              color: white;
+              font-weight: bold;
+              font-size: 12px;
+              cursor: pointer;
+            ">×</div>`,
             iconSize: [20, 20],
             iconAnchor: [10, 10],
           });
-          return <AttackMarkerInner key={`${p.lat}-${p.lon}-${idx}`} p={p} icon={icon} />;
+          
+          // Debug: Log icon creation
+          console.log(`Created icon for marker ${idx}:`, {
+            color,
+            isLatest,
+            className: `byj-attack-icon-wrapper ${isLatest ? 'pulsating' : ''}`,
+            iconSize: [20, 20],
+            iconAnchor: [10, 10]
+          });
+          // Use markerKey to force re-rendering when markers change
+          const uniqueKey = `${markerKey}-${p.lat}-${p.lon}-${p.timestamp || Date.now()}-${idx}`;
+          return <AttackMarkerInner key={uniqueKey} p={p} icon={icon} isLatest={isLatest} />;
         })}
       </MapContainer>
     </div>
