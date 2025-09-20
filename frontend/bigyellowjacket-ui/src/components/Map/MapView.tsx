@@ -1,8 +1,8 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import './MapView.css';
-import { LiveAttackFeed } from '../LiveAttackFeed/LiveAttackFeed';
+import { globalAttackGenerator } from '../../services/globalAttackGenerator';
 
 // Fix default icon paths for Leaflet in bundlers
 import L from 'leaflet';
@@ -50,7 +50,50 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   const [pausedByMarker, setPausedByMarker] = useState(false); // Track if paused by marker click
   const [markerKey, setMarkerKey] = useState(0); // Force marker re-render
   const [followLatest, setFollowLatest] = useState(false); // Track if following latest marker
+  const [forceFollow, setForceFollow] = useState(false); // Track when to force follow
+  const [mapViewType, setMapViewType] = useState('street'); // Map view type: street, satellite, terrain, etc.
+  const [isPopupOpen, setIsPopupOpen] = useState(false); // Track if any popup is open
+  const [currentPopupMarker, setCurrentPopupMarker] = useState<AttackPoint | null>(null); // Track which marker has popup open
+  const popupOpenTimeRef = useRef<number | null>(null); // Track when popup was opened
+  const [autoAdvance, setAutoAdvance] = useState(true); // Auto-advance to new attacks
+  const [isMapPaused, setIsMapPaused] = useState(false); // Track if map is manually paused
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Map tile layer options
+  const getTileLayer = (viewType: string) => {
+    switch (viewType) {
+      case 'satellite':
+        return {
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+          attribution: '&copy; Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community'
+        };
+      case 'terrain':
+        return {
+          url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+          attribution: '&copy; Esri, DeLorme, NAVTEQ, TomTom, Intermap, iPC, USGS, FAO, NPS, NRCAN, GeoBase, Kadaster NL, Ordnance Survey, Esri Japan, METI, Esri China (Hong Kong), and the GIS User Community'
+        };
+      case 'dark':
+        return {
+          url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        };
+      case 'light':
+        return {
+          url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+        };
+      case 'watercolor':
+        return {
+          url: 'https://stamen-tiles.a.ssl.fastly.net/watercolor/{z}/{x}/{y}.jpg',
+          attribution: 'Map tiles by <a href="http://stamen.com">Stamen Design</a>, <a href="http://creativecommons.org/licenses/by/3.0">CC BY 3.0</a> &mdash; Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        };
+      default: // street
+        return {
+          url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+          attribution: '&copy; OpenStreetMap contributors'
+        };
+    }
+  };
 
   // Minimal country bounding boxes for spoof-check demo (expand as needed)
   const countryBoxes: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
@@ -161,64 +204,113 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
 
   const [markers, setMarkers] = useState<AttackPoint[]>(initialMarkers);
 
-  // Poll the global every 300ms to reflect live feed updates (even faster sync)
+  // Listen to global attack generator for real-time updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      const anyWindow = window as any;
-      const demo = anyWindow?.BYJ_DEMO_POINTS as AttackPoint[] | undefined;
-      if (Array.isArray(demo) && demo.length > 0) {
-        // Store all attacks for time slider
-        setAllAttacks(prevAttacks => {
-          // Check if we have new attacks by comparing lengths and last attack
-          const hasNewAttacks = prevAttacks.length !== demo.length || 
-            (prevAttacks.length > 0 && demo.length > 0 && 
-             prevAttacks[0].timestamp !== demo[0].timestamp);
-          
-          if (hasNewAttacks) {
-            console.log('🔄 New attacks detected, updating timeline:', demo.length, 'attacks');
-            
-            // Auto-scale timeline: keep slider at current position relative to new data
-            const sortedAttacks = [...demo].sort((a, b) => {
-              const timeA = new Date(a.timestamp || 0).getTime();
-              const timeB = new Date(b.timestamp || 0).getTime();
-              return timeA - timeB;
-            });
-            
-            if (sortedAttacks.length > 0) {
-              const firstTime = new Date(sortedAttacks[0].timestamp || 0).getTime();
-              const lastTime = new Date(sortedAttacks[sortedAttacks.length - 1].timestamp || 0).getTime();
-              const timeRange = lastTime - firstTime;
-              
-              // Update timeline range to accommodate new data
-              setTimelineRange({ min: 0, max: 100 });
-              
-              // If we're at live position (95%+), stay at live and focus on new attack
-              if (timeSliderValue >= 95) {
-                setTimeSliderValue(100);
-                // DISABLED - Do not auto-focus on markers
-                // setTimeout(() => {
-                //   focusOnCurrentMarker();
-                // }, 100);
-              } else {
-                // Keep current position for historical viewing
-                setTimeSliderValue(timeSliderValue);
-              }
-            }
-            
-            return demo;
+    const handleNewAttack = (newAttack: AttackPoint) => {
+      setAllAttacks(prevAttacks => {
+        const updated = [newAttack, ...prevAttacks];
+        console.log('🔄 Map received new attack:', {
+          previous: prevAttacks.length,
+          current: updated.length,
+          newAttack: {
+            ip: newAttack.ip,
+            lat: newAttack.lat,
+            lon: newAttack.lon,
+            severity: newAttack.severity
           }
-          return prevAttacks;
         });
-      }
-    }, 300); // Even faster polling for better sync
-    return () => clearInterval(interval);
+        
+        // Auto-scale timeline: keep slider at current position relative to new data
+        if (timeSliderValue >= 95) {
+          setTimeSliderValue(100);
+        }
+        
+        // If autoAdvance is enabled, move to new attacks ONLY if no popup is open and map is not paused
+        if (autoAdvance && !isPopupOpen && !isMapPaused) {
+          console.log('🔄 Auto-advance enabled - moving to new attack:', {
+            lat: newAttack.lat,
+            lon: newAttack.lon,
+            ip: newAttack.ip,
+            autoAdvance,
+            isPopupOpen,
+            isMapPaused
+          });
+          // Trigger map movement to the new attack
+          setTimeout(() => {
+            // Double-check that map is still not paused before setting forceFollow
+            if (!isMapPaused) {
+              setForceFollow(true);
+              setTimeout(() => setForceFollow(false), 1000);
+            } else {
+              console.log('🚫 Skipping forceFollow - map was paused during timeout');
+            }
+          }, 100);
+        } else if (followLatest && !isPopupOpen && !isMapPaused) {
+          console.log('🔄 Follow Latest enabled - triggering map movement to new attack:', {
+            lat: newAttack.lat,
+            lon: newAttack.lon,
+            ip: newAttack.ip,
+            followLatest,
+            isPopupOpen,
+            isMapPaused
+          });
+          // The MapController component will handle the actual movement
+        } else if (isMapPaused) {
+          console.log('🚫 Map is paused - new attack loaded but map will NOT move:', {
+            lat: newAttack.lat,
+            lon: newAttack.lon,
+            ip: newAttack.ip,
+            autoAdvance,
+            followLatest,
+            isPopupOpen,
+            isMapPaused
+          });
+        } else if (isPopupOpen) {
+          console.log('🚫 Popup is open - new attack loaded but map will NOT move:', {
+            lat: newAttack.lat,
+            lon: newAttack.lon,
+            ip: newAttack.ip,
+            autoAdvance,
+            followLatest,
+            isPopupOpen,
+            isMapPaused
+          });
+        } else {
+          console.log('🚫 Auto-advance disabled - not moving to new attack:', {
+            autoAdvance,
+            followLatest,
+            isPopupOpen,
+            isMapPaused
+          });
+        }
+        
+        return updated;
+      });
+    };
+
+    globalAttackGenerator.addListener(handleNewAttack);
+
+    // Load persisted attacks on mount
+    const existingAttacks = globalAttackGenerator.getAllAttacks();
+    if (existingAttacks.length > 0) {
+      setAllAttacks(existingAttacks);
+      console.log('📦 MapView loaded persisted attacks:', existingAttacks.length);
+    }
+
+    return () => {
+      globalAttackGenerator.removeListener(handleNewAttack);
+    };
   }, [timeSliderValue]);
 
   // Focus on the marker that matches the current timeline position
-  const focusOnCurrentMarker = () => {
-    // DISABLED - Do not move the map automatically
-    // This prevents any unwanted map movement when timeline updates
-    return;
+  const focusOnCurrentMarker = (shouldForceFollow = false) => {
+    console.log('🎯 focusOnCurrentMarker called with forceFollow:', shouldForceFollow);
+    setForceFollow(shouldForceFollow);
+    
+    // Reset forceFollow after a short delay
+    if (shouldForceFollow) {
+      setTimeout(() => setForceFollow(false), 1000);
+    }
   };
 
   // Update filtered attacks when allAttacks or timeSliderValue changes
@@ -246,20 +338,9 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
         }))
       });
       
-      // Follow the latest marker if enabled
+      // Follow the latest marker if enabled - MapController will handle this
       if (followLatest && filtered.length > 0) {
-        const latestMarker = filtered[0]; // First marker is the latest
-        const map = document.querySelector('.leaflet-container') as any;
-        if (map && map._leaflet_id) {
-          // Use the map instance to follow the latest marker
-          const leafletMap = map._leaflet;
-          if (leafletMap) {
-            leafletMap.flyTo([latestMarker.lat, latestMarker.lon], 12, {
-              duration: 1.0,
-              easeLinearity: 0.25
-            });
-          }
-        }
+        console.log('🔄 Follow Latest enabled - MapController will handle movement');
       }
       
       // DISABLED - Do not auto-focus on markers
@@ -288,9 +369,41 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   const startPlayback = () => {
     if (playbackIntervalRef.current) return;
     
+    // Don't start playback if a popup is open or map is paused
+    if (isPopupOpen) {
+      console.log('🚫 Cannot start playback - popup is open');
+      return;
+    }
+    
+    if (isMapPaused) {
+      console.log('🚫 Cannot start playback - map is paused');
+      return;
+    }
+    
     setIsPlaying(true);
     setPausedByMarker(false); // Reset marker pause state when manually playing
     playbackIntervalRef.current = setInterval(() => {
+      // Check again if popup is open or map is paused during playback
+      if (isPopupOpen) {
+        console.log('🚫 Pausing playback - popup opened during playback');
+        setIsPlaying(false);
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current);
+          playbackIntervalRef.current = null;
+        }
+        return;
+      }
+      
+      if (isMapPaused) {
+        console.log('🚫 Pausing playback - map was paused during playback');
+        setIsPlaying(false);
+        if (playbackIntervalRef.current) {
+          clearInterval(playbackIntervalRef.current);
+          playbackIntervalRef.current = null;
+        }
+        return;
+      }
+      
       setTimeSliderValue(prev => {
         if (prev >= 100) {
           setIsPlaying(false);
@@ -362,6 +475,14 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     }
   };
 
+  // Stop playback when popup opens or map is paused
+  useEffect(() => {
+    if ((isPopupOpen || isMapPaused) && isPlaying) {
+      console.log('🚫 Stopping playback due to popup open or map paused');
+      stopPlayback();
+    }
+  }, [isPopupOpen, isMapPaused, isPlaying]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -411,7 +532,68 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     return null;
   };
 
-  const AttackMarkerInner: React.FC<{ p: AttackPoint; icon: L.DivIcon; isLatest?: boolean }> = ({ p, icon, isLatest = false }) => {
+  // Component to handle map movement for follow functionality
+  const MapController: React.FC<{ 
+    followLatest: boolean; 
+    filteredAttacks: AttackPoint[]; 
+    forceFollow: boolean;
+    isPopupOpen: boolean;
+    isMapPaused: boolean;
+  }> = ({ followLatest, filteredAttacks, forceFollow, isPopupOpen, isMapPaused }) => {
+    const map = useMap();
+    
+    useEffect(() => {
+      console.log('🎮 MapController useEffect triggered:', {
+        forceFollow,
+        followLatest,
+        isMapPaused,
+        isPopupOpen,
+        filteredAttacksLength: filteredAttacks.length
+      });
+      
+      // Only move the map if explicitly requested (Follow Live button) or if followLatest is enabled
+      if (!forceFollow && !followLatest) {
+        console.log('🚫 Map movement disabled - forceFollow:', forceFollow, 'followLatest:', followLatest);
+        return;
+      }
+      
+    // NEVER move the map if manually paused (unless forceFollow is true)
+    if (isMapPaused && !forceFollow) {
+      console.log('🚫 Map movement completely disabled - map is manually paused');
+      return;
+    }
+      
+      // NEVER move the map if a popup is open - even for force follow
+      if (isPopupOpen) {
+        console.log('🚫 Map movement completely disabled - popup is open');
+        return;
+      }
+      
+      if (filteredAttacks.length > 0) {
+        const currentMarker = filteredAttacks[0]; // First marker is the latest
+        console.log('🎯 Focusing on marker:', {
+          lat: currentMarker.lat,
+          lon: currentMarker.lon,
+          ip: currentMarker.ip,
+          forceFollow,
+          followLatest,
+          isPopupOpen
+        });
+        
+        map.flyTo([currentMarker.lat, currentMarker.lon], 12, {
+          duration: 1.0,
+          easeLinearity: 0.25
+        });
+        console.log('✅ Map moved to marker');
+      } else {
+        console.log('❌ No filtered attacks to focus on');
+      }
+    }, [map, followLatest, filteredAttacks, forceFollow, isPopupOpen, isMapPaused]);
+    
+    return null;
+  };
+
+  const AttackMarkerInner: React.FC<{ p: AttackPoint; icon: L.DivIcon; isLatest?: boolean; isMapPaused?: boolean }> = ({ p, icon, isLatest = false, isMapPaused = false }) => {
     const map = useMap();
     
     // Debug: Log marker component rendering
@@ -426,31 +608,102 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     
     const onClick = () => {
       try { 
+        console.log('🎯 Marker clicked:', p.lat, p.lon, p.ip);
+        console.log('🎯 Map instance:', map);
+        console.log('🎯 Map methods available:', typeof map.flyTo);
+        
         // Pause the timeline when clicking a marker
         setIsPlaying(false);
         setPausedByMarker(true);
         
-        // Stop any ongoing map movements/animations immediately
-        map.stop();
-        
-        // Zoom in to view the threat actor
-        map.flyTo([p.lat, p.lon], 15, {
-          duration: 1.5,
-          easeLinearity: 0.25
-        });
+        // Check if map is valid before calling flyTo
+        if (map && typeof map.flyTo === 'function') {
+          console.log('🎯 Calling map.flyTo with:', [p.lat, p.lon], 15);
+          // Zoom in to view the threat actor at street level
+          map.flyTo([p.lat, p.lon], 15, {
+            duration: 1.5,
+            easeLinearity: 0.25
+          });
+          console.log('✅ map.flyTo called successfully');
+        } else {
+          console.error('❌ Map instance is invalid or flyTo method not available');
+        }
         
         // Add a brief visual feedback
         const mapContainer = map.getContainer();
-        mapContainer.style.transition = 'all 0.1s ease';
-        mapContainer.style.transform = 'scale(0.98)';
+        if (mapContainer) {
+          mapContainer.style.transition = 'all 0.1s ease';
+          mapContainer.style.transform = 'scale(0.98)';
+          
+          // Reset visual feedback
+          setTimeout(() => {
+            mapContainer.style.transform = 'scale(1)';
+            mapContainer.style.transition = 'all 0.3s ease';
+          }, 100);
+        }
         
-        // Reset visual feedback
-        setTimeout(() => {
-          mapContainer.style.transform = 'scale(1)';
-          mapContainer.style.transition = 'all 0.3s ease';
-        }, 100);
-      } catch {}
+        console.log('✅ Marker click handled successfully');
+      } catch (error) {
+        console.error('Error handling marker click:', error);
+      }
     };
+
+    // Use useCallback to prevent recreation on every render
+    const onPopupOpen = useCallback(() => {
+      try {
+        console.log('📋 Popup opening for:', p.lat, p.lon, p.ip);
+        console.log('📋 Current state before popup open:', {
+          isPopupOpen,
+          isMapPaused,
+          isPlaying,
+          pausedByMarker
+        });
+        
+        // Record the time when popup opens
+        popupOpenTimeRef.current = Date.now();
+        
+        // Pause the timeline when popup opens (no delay needed)
+        setIsPlaying(false);
+        setPausedByMarker(true);
+        setIsPopupOpen(true);
+        setCurrentPopupMarker(p); // Track which marker has popup open
+        console.log('✅ Popup opened, timeline paused, map paused');
+        
+        // Move map to the marker with the active popup when map is paused
+        if (isMapPaused) {
+          console.log('🎯 Moving map to active popup marker when paused:', {
+            lat: p.lat,
+            lon: p.lon,
+            ip: p.ip
+          });
+          
+          // Use the map instance to fly to the marker
+          if (mapRef.current) {
+            mapRef.current.flyTo([p.lat, p.lon], 15, {
+              animate: true,
+              duration: 1
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error handling popup open:', error);
+      }
+    }, [p.lat, p.lon, p.ip, isPopupOpen, isMapPaused, isPlaying, pausedByMarker]);
+
+    const onPopupClose = useCallback(() => {
+      try {
+        console.log('📋 Popup close attempt detected for:', p.lat, p.lon, p.ip);
+        console.log('📋 Current state:', { isPopupOpen, isMapPaused, isPlaying, pausedByMarker });
+        console.log('📋 Stack trace:', new Error().stack);
+        console.log('🚫 Popup close blocked - popup stays open permanently');
+        
+        // Do nothing - popup should stay open permanently
+        // This prevents any automatic closing behavior
+        return;
+      } catch (error) {
+        console.error('Error handling popup close:', error);
+      }
+    }, [p.lat, p.lon, p.ip, isPopupOpen, isMapPaused, isPlaying, pausedByMarker]);
     const spoof = isPointInCountry(p.lat, p.lon, p.country);
     
     // Check for spoofing and auto-block if detected (with delay)
@@ -466,13 +719,48 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     const kartaview = `https://kartaview.org/map/@${p.lat},${p.lon},17z`;
     const mapillary = `https://www.mapillary.com/app/?lat=${p.lat}&lng=${p.lon}&z=17`;
     const osm = `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}`;
+    console.log('🎯 Rendering marker for:', p.lat, p.lon, p.ip, 'with icon:', icon);
+    
     return (
-      <Marker position={[p.lat, p.lon]} icon={icon} eventHandlers={{ click: onClick }}>
-        <Popup maxWidth={400} className="byj-detailed-popup">
+      <Marker 
+        key={`marker-${p.ip}-${p.lat}-${p.lon}`}
+        position={[p.lat, p.lon]} 
+        icon={icon} 
+        eventHandlers={{ click: onClick, popupopen: onPopupOpen, popupclose: onPopupClose }}
+        data-marker-ip={p.ip}
+      >
+        <Popup 
+          maxWidth={400} 
+          className="byj-detailed-popup" 
+          closeButton={false} 
+          autoClose={false} 
+          keepInView={false}
+          closeOnClick={false}
+          closeOnEscapeKey={false}
+          onClose={() => {
+            console.log('🚫 Popup onClose triggered - blocking');
+            return false; // Prevent closing
+          }}
+        >
           <div className="byj-popup">
             <div className="byj-popup-title">
               {p.attackType || 'Attack'} {p.severity ? `(${p.severity})` : ''}
               {isLatest && <span className="latest-badge">LATEST</span>}
+              <button 
+                className="popup-close-button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  console.log('🔴 Manual popup close requested');
+                  setPausedByMarker(false);
+                  setIsPopupOpen(false);
+                  setCurrentPopupMarker(null);
+                  // Don't try to click the marker - just update state
+                  console.log('✅ Popup closed manually');
+                }}
+                title="Close popup"
+              >
+                ✕
+              </button>
             </div>
             
             {/* Basic Attack Info */}
@@ -568,6 +856,137 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
               </div>
             )}
 
+            {/* WiFi Location Tracking Section */}
+            {(p as any).wifiLocation && (
+              <div className="byj-detail-section byj-wifi-section">
+                <div className="byj-section-title">📡 WiFi Location Tracking</div>
+                <div className="byj-wifi-summary">
+                  <div className="byj-detail-row">
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Accuracy:</span>
+                      <span className="byj-detail-value">{(p as any).wifiLocation.estimatedAccuracy.toFixed(1)}m</span>
+                    </div>
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Method:</span>
+                      <span className="byj-detail-value">{(p as any).wifiLocation.locationMethod.toUpperCase()}</span>
+                    </div>
+                  </div>
+                  <div className="byj-detail-row">
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Confidence:</span>
+                      <span className="byj-detail-value">{(p as any).wifiLocation.triangulation.confidence}%</span>
+                    </div>
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Sources:</span>
+                      <span className="byj-detail-value">{(p as any).wifiLocation.triangulation.sources} APs</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="byj-access-points">
+                  <div className="byj-section-subtitle">📶 Nearby Access Points</div>
+                  <div className="byj-ap-list">
+                    {(p as any).wifiLocation.accessPoints.slice(0, 3).map((ap: any, idx: number) => (
+                      <div key={idx} className="byj-ap-item">
+                        <div className="byj-ap-info">
+                          <span className="byj-ap-ssid">{ap.ssid || 'Hidden Network'}</span>
+                          <span className="byj-ap-bssid">{ap.bssid}</span>
+                        </div>
+                        <div className="byj-ap-signal">
+                          <span className="byj-signal-strength">{ap.signalStrength} dBm</span>
+                          <div className="byj-signal-bar">
+                            <div 
+                              className="byj-signal-fill" 
+                              style={{
+                                width: `${Math.max(0, (ap.signalStrength + 100) * 2)}%`,
+                                backgroundColor: ap.signalStrength > -50 ? '#22c55e' : ap.signalStrength > -70 ? '#f59e0b' : '#ef4444'
+                              }}
+                            ></div>
+                          </div>
+                        </div>
+                        <div className="byj-ap-details">
+                          <span className="byj-ap-security">{ap.security}</span>
+                          <span className="byj-ap-channel">Ch {ap.channel}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Enhanced Location Details */}
+            {(p as any).locationDetails && (
+              <div className="byj-detail-section byj-location-section">
+                <div className="byj-section-title">📍 Ground Tracking Details</div>
+                <div className="byj-location-grid">
+                  <div className="byj-detail-row">
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Address:</span>
+                      <span className="byj-detail-value">{(p as any).locationDetails.address}</span>
+                    </div>
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Building:</span>
+                      <span className="byj-detail-value">{(p as any).locationDetails.building}</span>
+                    </div>
+                  </div>
+                  {(p as any).locationDetails.floor !== null && (
+                    <div className="byj-detail-row">
+                      <div className="byj-detail-item">
+                        <span className="byj-detail-label">Floor:</span>
+                        <span className="byj-detail-value">{(p as any).locationDetails.floor}</span>
+                      </div>
+                      {(p as any).locationDetails.room && (
+                        <div className="byj-detail-item">
+                          <span className="byj-detail-label">Room:</span>
+                          <span className="byj-detail-value">{(p as any).locationDetails.room}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div className="byj-detail-row">
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Venue:</span>
+                      <span className="byj-detail-value">{(p as any).locationDetails.context.venue}</span>
+                    </div>
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Environment:</span>
+                      <span className="byj-detail-value">{(p as any).locationDetails.context.environment}</span>
+                    </div>
+                  </div>
+                  <div className="byj-detail-row">
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">WiFi Density:</span>
+                      <span className="byj-detail-value">{(p as any).locationDetails.context.density}</span>
+                    </div>
+                    <div className="byj-detail-item">
+                      <span className="byj-detail-label">Tracking:</span>
+                      <span className={`byj-detail-value ${(p as any).locationDetails.tracking.isActive ? 'byj-status-active' : 'byj-status-inactive'}`}>
+                        {(p as any).locationDetails.tracking.isActive ? '🟢 Active' : '🔴 Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="byj-popup-actions">
+              <button 
+                className="byj-track-button"
+                onClick={() => {
+                  // Zoom in for detailed tracking
+                  map.flyTo([p.lat, p.lon], 16, {
+                    duration: 1.0,
+                    easeLinearity: 0.25
+                  });
+                }}
+                title="Zoom in for detailed tracking"
+              >
+                🎯 Track Closely
+              </button>
+            </div>
+
             {/* Street View Links */}
             <div className="byj-links">
               <a href={kartaview} target="_blank" rel="noreferrer">Street (KartaView)</a>
@@ -582,10 +1001,7 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
 
   return (
     <div style={{ height: '100%', width: '100%', position: 'relative' }}>
-      {/* Hidden LiveAttackFeed to generate data in background */}
-      <div style={{ display: 'none' }}>
-        <LiveAttackFeed />
-      </div>
+      {/* Global attack generator runs independently */}
       
       {/* Minimized Timeline Button */}
       {isTimelineMinimized && (
@@ -598,8 +1014,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             <div className="timeline-minimize-icon">⏱️</div>
             <div className="timeline-minimize-stats">
               <div className="timeline-minimize-count">{filteredAttacks.length}/{allAttacks.length}</div>
-              <div className={`timeline-minimize-status ${timeSliderValue >= 95 ? 'live' : ''} ${pausedByMarker ? 'paused-by-marker' : ''}`}>
-                {pausedByMarker ? '⏸️' : (timeSliderValue >= 95 ? '🔴' : '🔄')}
+              <div className={`timeline-minimize-status ${timeSliderValue >= 95 ? 'live' : ''} ${pausedByMarker ? 'paused-by-marker' : ''} ${isPopupOpen ? 'paused-by-popup' : ''} ${isMapPaused ? 'paused-by-map' : ''}`}>
+                {isMapPaused ? '⏸️' : isPopupOpen ? '⏸️' : pausedByMarker ? '⏸️' : (timeSliderValue >= 95 ? '🔴' : '🔄')}
               </div>
             </div>
           </div>
@@ -615,8 +1031,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
               <span>Showing {filteredAttacks.length} of {allAttacks.length} attacks</span>
               <span>Time: {getCurrentTimeDisplay()}</span>
               <span>Last Update: {new Date().toLocaleTimeString()}</span>
-              <span className={`sync-status ${timeSliderValue >= 95 ? 'live' : ''} ${pausedByMarker ? 'paused-by-marker' : ''}`}>
-                {pausedByMarker ? '⏸️ Paused by Marker' : (timeSliderValue >= 95 ? '🔴 LIVE' : '🔄 Live Sync')}
+              <span className={`sync-status ${timeSliderValue >= 95 ? 'live' : ''} ${pausedByMarker ? 'paused-by-marker' : ''} ${isPopupOpen ? 'paused-by-popup' : ''} ${isMapPaused ? 'paused-by-map' : ''}`}>
+                {isMapPaused ? '⏸️ Map Paused (All movement stopped)' : isPopupOpen ? '⏸️ Paused by Popup (New attacks loading)' : pausedByMarker ? '⏸️ Paused by Marker' : (timeSliderValue >= 95 ? '🔴 LIVE' : '🔄 Live Sync')}
               </span>
               <span className="attack-rate">
                 Rate: {allAttacks.length > 0 ? Math.round(allAttacks.length / Math.max(1, (Date.now() - new Date(allAttacks[allAttacks.length - 1].timestamp || 0).getTime()) / 60000)) : 0}/min
@@ -658,18 +1074,27 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           <div className="playback-controls">
             <button
               onClick={isPlaying ? stopPlayback : startPlayback}
-              className={`play-button ${isPlaying ? 'playing' : ''}`}
+              className={`play-button ${isPlaying ? 'playing' : ''} ${(isPopupOpen || isMapPaused) ? 'disabled' : ''}`}
+              disabled={isPopupOpen || isMapPaused}
+              title={isPopupOpen ? 'Cannot play while popup is open' : isMapPaused ? 'Cannot play while map is paused' : (isPlaying ? 'Pause timeline' : 'Play timeline')}
             >
-              {isPlaying ? '⏸️ Pause' : '▶️ Play'}
+              {isPopupOpen ? '⏸️ Paused by Popup' : isMapPaused ? '⏸️ Map Paused' : (isPlaying ? '⏸️ Pause' : '▶️ Play')}
             </button>
             <button onClick={resetPlayback} className="reset-button">
               🔄 Reset
             </button>
             <button 
               onClick={() => {
+                // Close any open popup and resume timeline
+                setIsPopupOpen(false);
+                setPausedByMarker(false);
+                setIsPlaying(true);
                 setTimeSliderValue(100); // Jump to live
-                // DISABLED - Do not auto-focus on markers
-                // focusOnCurrentMarker();
+                // Trigger map movement after popup is closed
+                setTimeout(() => {
+                  setForceFollow(true);
+                  setTimeout(() => setForceFollow(false), 1000);
+                }, 100);
               }}
               className="follow-live-button"
               title="Follow Live Attacks"
@@ -693,12 +1118,106 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
               🌍 World
             </button>
             <button 
-              onClick={() => setFollowLatest(!followLatest)} 
+              onClick={() => {
+                const newFollowLatest = !followLatest;
+                setFollowLatest(newFollowLatest);
+                if (newFollowLatest) {
+                  // Close any open popup and resume timeline when enabling follow
+                  setIsPopupOpen(false);
+                  setPausedByMarker(false);
+                  setIsPlaying(true);
+                  // When enabling follow latest, focus on current marker after popup is closed
+                  setTimeout(() => {
+                    focusOnCurrentMarker(true);
+                  }, 100);
+                }
+              }} 
               className={`follow-latest-button ${followLatest ? 'active' : ''}`}
               title={followLatest ? 'Stop Following Latest Marker' : 'Follow Latest Marker'}
             >
               {followLatest ? '📍 Following' : '📍 Follow Latest'}
             </button>
+            
+            <button 
+              onClick={() => setAutoAdvance(!autoAdvance)}
+              className={`auto-advance-button ${autoAdvance ? 'active' : ''} ${(isPopupOpen || isMapPaused) ? 'disabled' : ''}`}
+              disabled={isPopupOpen || isMapPaused}
+              title={isPopupOpen ? 'Cannot change auto-advance while popup is open' : isMapPaused ? 'Cannot change auto-advance while map is paused' : (autoAdvance ? 'Disable auto-advance to new attacks' : 'Enable auto-advance to new attacks')}
+            >
+              {isPopupOpen ? '⏸️ Disabled by Popup' : isMapPaused ? '⏸️ Disabled by Pause' : (autoAdvance ? '🚀 Auto-Advance ON' : '⏸️ Auto-Advance OFF')}
+            </button>
+            
+            <button 
+              onClick={() => {
+                const newPauseState = !isMapPaused;
+                console.log('🔄 Pause Map button clicked:', {
+                  currentState: isMapPaused,
+                  newState: newPauseState,
+                  autoAdvance,
+                  followLatest,
+                  isPlaying
+                });
+                setIsMapPaused(newPauseState);
+                if (newPauseState) {
+                  // When pausing map, also stop playback
+                  stopPlayback();
+                  console.log('⏸️ Map paused - all movement and playback stopped');
+                } else {
+                  console.log('▶️ Map resumed - movement and playback can continue');
+                }
+              }}
+              className={`pause-map-button ${isMapPaused ? 'paused' : 'active'}`}
+              title={isMapPaused ? 'Resume map movement and timeline' : 'Pause all map movement and timeline'}
+            >
+              {isMapPaused ? '⏸️ Map Paused' : '▶️ Map Active'}
+            </button>
+            
+        <button 
+          onClick={() => {
+            console.log('🎯 Go to Latest button clicked - moving to latest marker while keeping map paused');
+            // Close any open popups
+            setIsPopupOpen(false);
+            // Move to the latest marker
+            if (filteredAttacks.length > 0) {
+              const latestMarker = filteredAttacks[0];
+              console.log('🎯 Moving to latest marker:', {
+                lat: latestMarker.lat,
+                lon: latestMarker.lon,
+                ip: latestMarker.ip
+              });
+              // Trigger map movement to latest marker
+              setForceFollow(true);
+              setTimeout(() => setForceFollow(false), 1000);
+            } else {
+              console.log('❌ No markers available to move to');
+            }
+          }}
+          className="go-to-latest-button"
+          title="Go to latest attack marker while keeping map paused"
+        >
+          🎯 Go to Latest
+        </button>
+        
+        {/* Go to Popup button - only show when popup is open */}
+        {isPopupOpen && currentPopupMarker && (
+          <button 
+            onClick={() => {
+              console.log('📍 Go to Popup button clicked - moving to active popup marker');
+              console.log('📍 Moving to popup marker:', {
+                lat: currentPopupMarker.lat,
+                lon: currentPopupMarker.lon,
+                ip: currentPopupMarker.ip
+              });
+              // Trigger map movement to popup marker
+              setForceFollow(true);
+              setTimeout(() => setForceFollow(false), 1000);
+            }}
+            className="go-to-popup-button"
+            title={`Go to popup marker: ${currentPopupMarker.ip} (${currentPopupMarker.lat.toFixed(4)}, ${currentPopupMarker.lon.toFixed(4)})`}
+          >
+            📍 Go to Popup
+          </button>
+        )}
             <select
               value={playbackSpeed}
               onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
@@ -710,16 +1229,74 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
               <option value={4}>4x</option>
             </select>
           </div>
+
+          {/* Map View Type Selector */}
+          <div className="map-view-controls">
+            <label className="map-view-label">Map View:</label>
+            <div className="map-view-buttons">
+              <button 
+                onClick={() => setMapViewType('street')}
+                className={`map-view-button ${mapViewType === 'street' ? 'active' : ''}`}
+                title="Street Map"
+              >
+                🗺️ Street
+              </button>
+              <button 
+                onClick={() => setMapViewType('satellite')}
+                className={`map-view-button ${mapViewType === 'satellite' ? 'active' : ''}`}
+                title="Satellite View"
+              >
+                🛰️ Satellite
+              </button>
+              <button 
+                onClick={() => setMapViewType('terrain')}
+                className={`map-view-button ${mapViewType === 'terrain' ? 'active' : ''}`}
+                title="Terrain View"
+              >
+                🏔️ Terrain
+              </button>
+              <button 
+                onClick={() => setMapViewType('dark')}
+                className={`map-view-button ${mapViewType === 'dark' ? 'active' : ''}`}
+                title="Dark Theme"
+              >
+                🌙 Dark
+              </button>
+              <button 
+                onClick={() => setMapViewType('light')}
+                className={`map-view-button ${mapViewType === 'light' ? 'active' : ''}`}
+                title="Light Theme"
+              >
+                ☀️ Light
+              </button>
+              <button 
+                onClick={() => setMapViewType('watercolor')}
+                className={`map-view-button ${mapViewType === 'watercolor' ? 'active' : ''}`}
+                title="Watercolor Style"
+              >
+                🎨 Watercolor
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
       <MapContainer center={defaultCenter} zoom={5} style={{ height: isTimelineMinimized ? '100vh' : 'calc(100vh - 350px)', width: '100%' }}>
         <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution={getTileLayer(mapViewType).attribution}
+          url={getTileLayer(mapViewType).url}
         />
         {/* DISABLED - FitToMarkers was causing marker placement issues */}
         {/* <FitToMarkers pts={markers} /> */}
+        
+        {/* Map controller for follow functionality */}
+        <MapController 
+          followLatest={followLatest} 
+          filteredAttacks={filteredAttacks} 
+          forceFollow={forceFollow}
+          isPopupOpen={isPopupOpen}
+          isMapPaused={isMapPaused}
+        />
         
         {markers.map((p, idx) => {
           // Debug: Log each marker being rendered
@@ -738,27 +1315,49 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             low: '#16a34a',
           };
           const color = colorBySeverity[(p.severity || '').toLowerCase()] || '#dc2626';
+          // Create marker with different sizes for latest vs others
           const isLatest = idx === 0; // First marker is the latest
-          // Try a simpler approach with a basic colored circle
+          const markerSize = isLatest ? 30 : 20;
+          const borderWidth = isLatest ? 4 : 2;
+          const fontSize = isLatest ? 16 : 12;
+          const shadowIntensity = isLatest ? '0 4px 8px rgba(0,0,0,0.4)' : '0 2px 4px rgba(0,0,0,0.3)';
+          
           const icon = L.divIcon({
-            className: 'byj-simple-marker',
+            className: `byj-simple-marker ${isLatest ? 'latest-marker' : ''}`,
             html: `<div style="
-              width: 20px; 
-              height: 20px; 
+              width: ${markerSize}px; 
+              height: ${markerSize}px; 
               background: ${color}; 
               border-radius: 50%; 
-              border: 2px solid white; 
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              border: ${borderWidth}px solid white; 
+              box-shadow: ${shadowIntensity};
               display: flex;
               align-items: center;
               justify-content: center;
               color: white;
               font-weight: bold;
-              font-size: 12px;
+              font-size: ${fontSize}px;
               cursor: pointer;
-            ">×</div>`,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10],
+              position: relative;
+              animation: ${isLatest ? 'pulse 2s infinite' : 'none'};
+            ">×</div>
+            ${isLatest ? `<div style="
+              position: absolute;
+              top: -25px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: #ff6b6b;
+              color: white;
+              padding: 2px 6px;
+              border-radius: 10px;
+              font-size: 10px;
+              font-weight: bold;
+              white-space: nowrap;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              animation: pulse 2s infinite;
+            ">LATEST</div>` : ''}`,
+            iconSize: [markerSize, markerSize],
+            iconAnchor: [markerSize/2, markerSize/2],
           });
           
           // Debug: Log icon creation
@@ -771,7 +1370,7 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           });
           // Use markerKey to force re-rendering when markers change
           const uniqueKey = `${markerKey}-${p.lat}-${p.lon}-${p.timestamp || Date.now()}-${idx}`;
-          return <AttackMarkerInner key={uniqueKey} p={p} icon={icon} isLatest={isLatest} />;
+          return <AttackMarkerInner key={uniqueKey} p={p} icon={icon} isLatest={isLatest} isMapPaused={isMapPaused} />;
         })}
       </MapContainer>
     </div>

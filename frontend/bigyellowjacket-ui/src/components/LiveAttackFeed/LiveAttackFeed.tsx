@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Shield, Clock, MapPin, Activity, Eye, Filter, Search, RefreshCw, Network } from 'lucide-react';
 import { useWebSocket } from '../../services/websocket';
 import { AttackEvent, MacAddress, MacAddressUtils } from '../../models/datatypes';
+import { globalAttackGenerator } from '../../services/globalAttackGenerator';
 import './LiveAttackFeed.css';
 
 export const LiveAttackFeed: React.FC = () => {
@@ -195,23 +196,26 @@ export const LiveAttackFeed: React.FC = () => {
 
   // Generate initial attack data
   useEffect(() => {
-    // Start with empty attacks - begin at 0
-    setAttacks([]);
-    setAttackCount(0);
+    // Initialize with persisted attacks from global generator
+    const existingAttacks = globalAttackGenerator.getAllAttacks();
+    setAttacks(existingAttacks);
+    setAttackCount(existingAttacks.length);
+    console.log('📦 LiveAttackFeed initialized with persisted attacks:', existingAttacks.length);
   }, []);
 
-  // Auto-generate new attacks
+  // Listen to global attack generator
   useEffect(() => {
-    if (!isAutoRefresh) return;
-
-    const interval = setInterval(() => {
-      const newAttack = generateAttackEvent();
+    const handleNewAttack = (newAttack: AttackEvent) => {
       setAttacks(prev => [newAttack, ...prev]); // Keep all attacks
       setAttackCount(prev => prev + 1);
-    }, Math.random() * 3000 + 1000); // Random interval between 1-4 seconds
+    };
 
-    return () => clearInterval(interval);
-  }, [isAutoRefresh]);
+    globalAttackGenerator.addListener(handleNewAttack);
+
+    return () => {
+      globalAttackGenerator.removeListener(handleNewAttack);
+    };
+  }, []);
 
   // Filter attacks based on search and filters
   useEffect(() => {
@@ -388,6 +392,18 @@ export const LiveAttackFeed: React.FC = () => {
           >
             <RefreshCw className="w-4 h-4" />
             {isAutoRefresh ? 'Auto Refresh ON' : 'Auto Refresh OFF'}
+          </button>
+          
+          <button
+            onClick={() => {
+              globalAttackGenerator.clearAllAttacks();
+              setAttacks([]);
+              setAttackCount(0);
+            }}
+            className="clear-button"
+            title="Clear All Attacks from Storage"
+          >
+            🗑️ Clear All
           </button>
         </div>
       </div>

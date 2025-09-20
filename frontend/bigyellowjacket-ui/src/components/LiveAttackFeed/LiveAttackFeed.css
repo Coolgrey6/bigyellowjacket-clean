@@ -169,6 +169,26 @@
   border-color: #3b82f6;
 }
 
+.clear-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #dc2626;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.clear-button:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+}
+
 /* Feed Container */
 .attack-feed-container {
   background: white;

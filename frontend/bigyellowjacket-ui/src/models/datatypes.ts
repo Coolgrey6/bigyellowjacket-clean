@@ -331,7 +331,67 @@ export interface LoginStats {
   recent_attempts: LoginAttempt[];
 }
 
-// Attack event for live feed
+// WiFi Access Point information
+export interface WiFiAccessPoint {
+  ssid: string;
+  bssid: string;
+  signalStrength: number; // dBm
+  frequency: number; // MHz
+  channel: number;
+  security: string; // WPA2, WPA3, Open, etc.
+  vendor: string;
+  isHidden: boolean;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+// WiFi location tracking data
+export interface WiFiLocationData {
+  accessPoints: WiFiAccessPoint[];
+  estimatedAccuracy: number; // meters
+  locationMethod: 'wifi' | 'gps' | 'cell' | 'ip' | 'bluetooth';
+  wifiFingerprint: string; // Unique identifier for location
+  signalMap: {
+    strongest: WiFiAccessPoint;
+    weakest: WiFiAccessPoint;
+    average: number;
+  };
+  triangulation: {
+    method: 'trilateration' | 'fingerprinting' | 'hybrid';
+    confidence: number; // 0-100
+    sources: number; // Number of APs used
+  };
+}
+
+// Enhanced location details for ground tracking
+export interface LocationDetails {
+  address: string;
+  building: string;
+  floor: number | null;
+  room: string | null;
+  coordinates: {
+    lat: number;
+    lon: number;
+    altitude: number | null;
+  };
+  accuracy: {
+    horizontal: number; // meters
+    vertical: number | null; // meters
+  };
+  context: {
+    venue: string; // Airport, Mall, Office, etc.
+    environment: 'indoor' | 'outdoor' | 'underground' | 'elevated';
+    density: 'sparse' | 'moderate' | 'dense'; // WiFi AP density
+  };
+  tracking: {
+    lastUpdate: string;
+    updateFrequency: number; // seconds
+    isActive: boolean;
+    confidence: number; // 0-100
+  };
+}
+
+// Attack event for live feed with WiFi location tracking
 export interface AttackEvent {
   id: string;
   ip: string;
@@ -355,6 +415,9 @@ export interface AttackEvent {
   confidence_score: number;
   geo_location?: GeoLocation;
   network_context?: NetworkContext;
+  // WiFi location tracking
+  wifiLocation?: WiFiLocationData;
+  locationDetails?: LocationDetails;
 }
 
 // WebSocket message types

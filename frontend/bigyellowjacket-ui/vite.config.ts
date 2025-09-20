@@ -49,12 +49,12 @@ export default defineConfig(() => {
             },
           }
         : {
-            '/api': {
-              target: 'http://localhost:8083',
-              changeOrigin: true,
-            },
+        '/api': {
+          target: 'http://localhost:8086',
+          changeOrigin: true,
+        },
             '/ws': {
-              target: 'ws://localhost:8766',
+              target: 'ws://localhost:8767',
               ws: true,
               changeOrigin: true,
             },

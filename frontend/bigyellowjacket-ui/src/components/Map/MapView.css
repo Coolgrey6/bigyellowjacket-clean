@@ -215,12 +215,42 @@
   border: 1px solid #fecaca;
 }
 
+/* Popup Actions */
+.byj-popup-actions {
+  margin: 12px 0;
+  padding: 8px 0;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.byj-track-button {
+  background: #dc2626;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: center;
+}
+
+.byj-track-button:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(220, 38, 38, 0.3);
+}
+
 .byj-links {
   display: flex;
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid #e5e7eb;
 }
 
 .byj-links a {
@@ -307,6 +337,25 @@
 .timeline-minimize-status.paused-by-marker {
   color: #f59e0b;
   animation: none;
+}
+
+.timeline-minimize-status.paused-by-popup {
+  color: #3b82f6;
+  animation: none;
+}
+
+.timeline-minimize-status.paused-by-map {
+  color: #dc2626;
+  animation: pulse-paused-minimize 2s infinite;
+}
+
+@keyframes pulse-paused-minimize {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
+  }
 }
 
 /* Time Slider Controls - Expanded */
@@ -457,9 +506,63 @@
   animation: none;
 }
 
+.sync-status.paused-by-popup {
+  color: #3b82f6 !important;
+  background: rgba(59, 130, 246, 0.1) !important;
+  border: 1px solid rgba(59, 130, 246, 0.3) !important;
+  animation: none;
+}
+
+.sync-status.paused-by-map {
+  color: #dc2626 !important;
+  background: rgba(220, 38, 38, 0.1) !important;
+  border: 1px solid rgba(220, 38, 38, 0.3) !important;
+  animation: pulse-paused-status 2s infinite;
+}
+
+@keyframes pulse-paused-status {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
+  }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.7; }
+}
+
+/* Latest marker styling */
+.latest-marker {
+  animation: pulse 2s infinite !important;
+  transform: scale(1.1);
+  z-index: 1000 !important;
+}
+
+.latest-marker::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  right: -8px;
+  bottom: -8px;
+  border: 2px solid #ff6b6b;
+  border-radius: 50%;
+  animation: ripple 2s infinite;
+  pointer-events: none;
+}
+
+@keyframes ripple {
+  0% {
+    transform: scale(0.8);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
 }
 
 .time-slider-container {
@@ -584,6 +687,19 @@
   background: #d97706;
 }
 
+.play-button.disabled {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.play-button.disabled:hover {
+  background: #9ca3af;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
 .reset-button {
   background: #6b7280;
   color: white;
@@ -638,6 +754,361 @@
   }
 }
 
+.auto-advance-button {
+  background: #059669;
+  color: white;
+  border: 1px solid #059669;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.auto-advance-button:hover {
+  background: #047857;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.auto-advance-button.active {
+  background: #047857;
+  animation: pulse-advance 2s infinite;
+}
+
+.auto-advance-button.disabled {
+  background: #9ca3af;
+  border-color: #9ca3af;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.auto-advance-button.disabled:hover {
+  background: #9ca3af;
+  transform: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Pause Map Button */
+.pause-map-button {
+  background: #dc2626;
+  color: white;
+  border: 1px solid #dc2626;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.pause-map-button:hover {
+  background: #b91c1c;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.pause-map-button.active {
+  background: #16a34a;
+  border-color: #16a34a;
+  animation: pulse-active 2s infinite;
+}
+
+.pause-map-button.paused {
+  background: #dc2626;
+  border-color: #dc2626;
+  animation: pulse-paused 2s infinite;
+}
+
+/* Go to Latest Button */
+.go-to-latest-button {
+  background: #7c3aed;
+  color: white;
+  border: 1px solid #7c3aed;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  animation: pulse-latest 2s infinite;
+}
+
+.go-to-latest-button:hover {
+  background: #6d28d9;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes pulse-latest {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.1);
+  }
+}
+
+/* Go to Popup Button */
+.go-to-popup-button {
+  background: #059669;
+  color: white;
+  border: 1px solid #059669;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  animation: pulse-popup 2s infinite;
+}
+
+.go-to-popup-button:hover {
+  background: #047857;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+@keyframes pulse-popup {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.1);
+  }
+}
+
+@keyframes pulse-active {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.1);
+  }
+}
+
+@keyframes pulse-paused {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1);
+  }
+}
+
+@keyframes pulse-advance {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.1);
+  }
+}
+
+/* WiFi Location Tracking Styles */
+.byj-wifi-section {
+  border-top: 1px solid rgba(59, 130, 246, 0.2);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.byj-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.byj-section-subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  margin-bottom: 6px;
+  margin-top: 8px;
+}
+
+.byj-wifi-summary {
+  background: rgba(59, 130, 246, 0.05);
+  border-radius: 6px;
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.byj-access-points {
+  margin-top: 8px;
+}
+
+.byj-ap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.byj-ap-item {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(209, 213, 219, 0.5);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 11px;
+}
+
+.byj-ap-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.byj-ap-ssid {
+  font-weight: 500;
+  color: #1f2937;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.byj-ap-bssid {
+  font-family: 'Courier New', monospace;
+  color: #6b7280;
+  font-size: 10px;
+}
+
+.byj-ap-signal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.byj-signal-strength {
+  font-size: 10px;
+  color: #6b7280;
+  min-width: 50px;
+}
+
+.byj-signal-bar {
+  flex: 1;
+  height: 4px;
+  background: rgba(209, 213, 219, 0.5);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.byj-signal-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.byj-ap-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.byj-ap-security {
+  font-size: 10px;
+  color: #6b7280;
+  background: rgba(59, 130, 246, 0.1);
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+
+.byj-ap-channel {
+  font-size: 10px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+/* Location Details Styles */
+.byj-location-section {
+  border-top: 1px solid rgba(34, 197, 94, 0.2);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.byj-location-grid {
+  background: rgba(34, 197, 94, 0.05);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.byj-status-active {
+  color: #059669 !important;
+  font-weight: 500;
+}
+
+.byj-status-inactive {
+  color: #dc2626 !important;
+  font-weight: 500;
+}
+
+/* Map View Controls */
+.map-view-controls {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.map-view-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.map-view-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.map-view-button {
+  background: rgba(255, 255, 255, 0.8);
+  color: #374151;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.map-view-button:hover {
+  background: rgba(255, 255, 255, 1);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.map-view-button.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
 .speed-select {
   padding: 8px 12px;
   border: 1px solid #d1d5db;
@@ -676,5 +1147,43 @@
   .playback-controls {
     flex-wrap: wrap;
   }
+}
+
+/* Popup Close Button */
+.popup-close-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: #ef4444;
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 1000;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.popup-close-button:hover {
+  background: #dc2626;
+  transform: scale(1.1);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.popup-close-button:active {
+  transform: scale(0.95);
+}
+
+/* Update popup title to accommodate close button */
+.byj-popup-title {
+  position: relative;
+  padding-right: 40px; /* Make space for close button */
 }
 
