@@ -19,11 +19,11 @@ import { Data } from './components/Data/Data';
 import { Settings } from './components/Settings/Settings';
 import { TestPage } from './TestPage';
 import MapView from './components/Map/MapView';
-import { useWebSocketStore } from './hooks/useWebSocket';
+import { useWebSocket } from './services/websocket';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated } = useWebSocketStore();
+  const { isAuthenticated } = useWebSocket();
   
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
@@ -34,7 +34,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 // Public Route Component (redirects to monitoring if already authenticated)
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAuthenticated } = useWebSocketStore();
+  const { isAuthenticated } = useWebSocket();
   
   if (isAuthenticated) {
     return <Navigate to="/app/monitoring" replace />;
@@ -44,7 +44,7 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 function App() {
-  const { login } = useWebSocketStore();
+  const { login } = useWebSocket();
 
   const handleLogin = async (user: { username: string; role: string; password: string }) => {
     // Use the WebSocket store login method with the actual password

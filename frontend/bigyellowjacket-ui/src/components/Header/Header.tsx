@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Shield, LogOut, User } from 'lucide-react';
-import { useWebSocketStore } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../services/websocket';
 
 export const Header: React.FC = () => {
-  const { isAuthenticated, userRole, logout } = useWebSocketStore();
+  const { isAuthenticated, userRole, logout } = useWebSocket();
   const navigate = useNavigate();
 
   const handleLogout = () => {

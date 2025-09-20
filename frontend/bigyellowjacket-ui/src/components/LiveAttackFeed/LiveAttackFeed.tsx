@@ -1,27 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Shield, Clock, MapPin, Activity, Eye, Filter, Search, RefreshCw } from 'lucide-react';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { AlertTriangle, Shield, Clock, MapPin, Activity, Eye, Filter, Search, RefreshCw, Network } from 'lucide-react';
+import { useWebSocket } from '../../services/websocket';
+import { AttackEvent, MacAddress, MacAddressUtils } from '../../models/datatypes';
 import './LiveAttackFeed.css';
-
-interface AttackEvent {
-  id: string;
-  ip: string;
-  port: number;
-  protocol: string;
-  attackType: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  timestamp: string;
-  country?: string;
-  city?: string;
-  bytesTransferred: number;
-  duration: number;
-  status: 'blocked' | 'allowed' | 'monitoring';
-  process?: string;
-  userAgent?: string;
-  referer?: string;
-  lat?: number;
-  lon?: number;
-}
 
 export const LiveAttackFeed: React.FC = () => {
   const { connected, connections, alerts } = useWebSocket();
@@ -32,6 +13,64 @@ export const LiveAttackFeed: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isAutoRefresh, setIsAutoRefresh] = useState(true);
   const [attackCount, setAttackCount] = useState(0);
+  const [blockedIPs, setBlockedIPs] = useState<string[]>([]);
+
+  // Auto-block IPs showing country spoofing
+  const autoBlockSpoofedIP = async (ip: string, reason: string) => {
+    try {
+      console.log(`🚫 Auto-blocking spoofed IP: ${ip} - Reason: ${reason}`);
+      
+      // Send block request to API
+      const response = await fetch('/api/threats/block-ip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ip: ip,
+          duration: 3600, // 1 hour
+          reason: `Auto-blocked: ${reason}`,
+          auto_blocked: true,
+          spoofing_detected: true
+        })
+      });
+
+      if (response.ok) {
+        console.log(`✅ Successfully auto-blocked IP: ${ip}`);
+        setBlockedIPs(prev => [...prev, ip]);
+        
+        // Show notification
+        if (typeof window !== 'undefined' && window.alert) {
+          window.alert(`🚫 Auto-blocked IP ${ip} for country spoofing!`);
+        }
+      } else {
+        console.error(`❌ Failed to auto-block IP: ${ip}`, response.statusText);
+      }
+    } catch (error) {
+      console.error(`❌ Error auto-blocking IP ${ip}:`, error);
+    }
+  };
+
+  // Check for country spoofing
+  const checkCountrySpoofing = (attack: AttackEvent) => {
+    if (!attack.country || !attack.geo_location) return;
+    
+    const claimedCountry = attack.country;
+    const actualCountry = attack.geo_location.country;
+    
+    // If claimed country doesn't match actual country, it's spoofing
+    if (claimedCountry !== actualCountry) {
+      const reason = `Country spoofing detected: Claimed ${claimedCountry} but actual location is ${actualCountry}`;
+      autoBlockSpoofedIP(attack.ip, reason);
+    }
+  };
+
+  // Block ALL attacks with high risk factors
+  const blockAllAttacks = (attack: AttackEvent) => {
+    // Block all attacks regardless of type - security first approach
+    const reason = `High risk attack detected: ${attack.attackType} from ${attack.country}`;
+    autoBlockSpoofedIP(attack.ip, reason);
+  };
 
   // Generate realistic attack data
   const generateAttackEvent = (): AttackEvent => {
@@ -67,8 +106,18 @@ export const LiveAttackFeed: React.FC = () => {
     };
     
     const protocols = ['TCP', 'UDP', 'HTTP', 'HTTPS', 'FTP', 'SSH', 'SMTP'];
-    const severities: ('low' | 'medium' | 'high' | 'critical')[] = ['low', 'medium', 'high', 'critical'];
+    const severities: ('low' | 'medium' | 'high' | 'critical')[] = ['high', 'critical']; // Only high and critical severity attacks
     const statuses: ('blocked' | 'allowed' | 'monitoring')[] = ['blocked', 'allowed', 'monitoring'];
+    
+    // Generate realistic MAC addresses
+    const generateMacAddress = (): MacAddress => {
+      const oui = ['00:50:56', '08:00:27', '00:0C:29', '00:1C:42', '52:54:00', '00:15:5D', '00:16:3E', 'AC:DE:48'];
+      const randomOui = oui[Math.floor(Math.random() * oui.length)];
+      const randomBytes = Array.from({length: 3}, () => 
+        Math.floor(Math.random() * 256).toString(16).padStart(2, '0')
+      ).join(':');
+      return MacAddressUtils.create(`${randomOui}:${randomBytes}`);
+    };
     
     const now = new Date();
     const randomIP = `${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
@@ -77,26 +126,73 @@ export const LiveAttackFeed: React.FC = () => {
     const base = cityToLatLon[city] || { lat: 37.7749, lon: -122.4194 };
     // Add a tiny jitter so markers in same city don't overlap
     const jitter = () => (Math.random() - 0.5) * 0.2; // ~0.2 degrees
+    
+    // 20% chance of creating a spoofed attack for demo purposes
+    const isSpoofed = Math.random() < 0.2;
+    const actualCountry = isSpoofed ? countries[Math.floor(Math.random() * countries.length)] : country;
 
-    return {
+    const macAddress = generateMacAddress();
+    console.log('Generated MAC address:', macAddress);
+    
+    const attack: AttackEvent = {
       id: `attack_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       ip: randomIP,
+      mac: macAddress,
       port: Math.floor(Math.random() * 65535) + 1,
-      protocol: protocols[Math.floor(Math.random() * protocols.length)],
+      protocol: protocols[Math.floor(Math.random() * protocols.length)] as any,
       attackType: attackTypes[Math.floor(Math.random() * attackTypes.length)],
       severity: severities[Math.floor(Math.random() * severities.length)],
       timestamp: now.toISOString(),
       country,
       city,
+      lat: base.lat + jitter(),
+      lon: base.lon + jitter(),
       bytesTransferred: Math.floor(Math.random() * 1000000) + 1000,
       duration: Math.floor(Math.random() * 300) + 1,
-      status: statuses[Math.floor(Math.random() * statuses.length)],
+      status: statuses[Math.floor(Math.random() * statuses.length)] as any,
       process: Math.random() > 0.5 ? 'chrome.exe' : 'firefox.exe',
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       referer: Math.random() > 0.5 ? 'https://google.com' : undefined,
-      lat: base.lat + jitter(),
-      lon: base.lon + jitter(),
+      attack_vector: attackTypes[Math.floor(Math.random() * attackTypes.length)],
+      confidence_score: Math.floor(Math.random() * 100),
+      geo_location: {
+        country: actualCountry, // Use actual country for geo_location
+        country_code: 'US',
+        region: 'Unknown',
+        city,
+        latitude: base.lat + jitter(),
+        longitude: base.lon + jitter(),
+        timezone: 'UTC',
+        isp: 'Unknown ISP',
+        organization: 'Unknown Org',
+        asn: Math.floor(Math.random() * 65535),
+        accuracy_radius: Math.floor(Math.random() * 100)
+      },
+      network_context: {
+        subnet: '192.168.1.0/24',
+        vlan_id: Math.floor(Math.random() * 100),
+        network_segment: 'internal',
+        is_internal: Math.random() > 0.5,
+        is_dmz: Math.random() > 0.8,
+        is_guest: Math.random() > 0.9,
+        network_trust_level: 'low'
+      }
     };
+
+    // Update global demo points for the map FIRST (so they appear on map)
+    const anyWindow = window as any;
+    if (!anyWindow.BYJ_DEMO_POINTS) {
+      anyWindow.BYJ_DEMO_POINTS = [];
+    }
+    anyWindow.BYJ_DEMO_POINTS = [attack, ...anyWindow.BYJ_DEMO_POINTS].slice(0, 200); // Keep last 200 attacks for timeline
+
+    // Block ALL attacks after a short delay (so they appear on map first)
+    setTimeout(() => {
+      blockAllAttacks(attack);
+      checkCountrySpoofing(attack);
+    }, 2000); // 2 second delay to show on map first
+
+    return attack;
   };
 
   // Generate initial attack data
@@ -330,6 +426,11 @@ export const LiveAttackFeed: React.FC = () => {
                     <span className={`status-badge ${attack.status}`}>
                       {attack.status.toUpperCase()}
                     </span>
+                    {blockedIPs.includes(attack.ip) && (
+                      <span className="blocked-badge">
+                        🚫 BLOCKED
+                      </span>
+                    )}
                     <span className="timestamp">
                       <Clock className="w-3 h-3" />
                       {formatTimestamp(attack.timestamp)}
@@ -352,6 +453,35 @@ export const LiveAttackFeed: React.FC = () => {
                       <span className="detail-value">{attack.city}, {attack.country}</span>
                     </div>
                   </div>
+                  
+                  {attack.mac && (
+                    <div className="detail-row">
+                      <div className="detail-item">
+                        <span className="detail-label">
+                          <Network className="w-3 h-3 inline mr-1" />
+                          MAC Address:
+                        </span>
+                        <span className="detail-value font-mono text-sm">
+                          {attack.mac.address}
+                          {attack.mac.vendor && (
+                            <span className="text-gray-500 ml-2">({attack.mac.vendor})</span>
+                          )}
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">MAC Type:</span>
+                        <span className="detail-value">
+                          {attack.mac.isLocal ? 'Local' : 'Global'}
+                          {attack.mac.isMulticast && ' | Multicast'}
+                          {attack.mac.isBroadcast && ' | Broadcast'}
+                        </span>
+                      </div>
+                      <div className="detail-item">
+                        <span className="detail-label">Confidence:</span>
+                        <span className="detail-value">{attack.confidence_score}%</span>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="detail-row">
                     <div className="detail-item">
@@ -409,3 +539,4 @@ export const LiveAttackFeed: React.FC = () => {
     </div>
   );
 };
+console.log('Testing MAC address generation...');

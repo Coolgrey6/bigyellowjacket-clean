@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MAC Address Test</title>
+</head>
+<body>
+    <h1>MAC Address Feature Test</h1>
+    <div id="test-results"></div>
+    
+    <script>
+        // Test MAC address generation
+        function testMacAddressFeatures() {
+            const results = document.getElementById('test-results');
+            
+            // Test if the app is loaded
+            if (typeof window.BYJ_DEMO_POINTS !== 'undefined') {
+                results.innerHTML += '<p>✅ BYJ_DEMO_POINTS global variable found</p>';
+                
+                // Check if attacks have MAC addresses
+                const attacks = window.BYJ_DEMO_POINTS;
+                if (attacks && attacks.length > 0) {
+                    const firstAttack = attacks[0];
+                    if (firstAttack.mac) {
+                        results.innerHTML += '<p>✅ MAC address found in attack data: ' + firstAttack.mac.address + '</p>';
+                        results.innerHTML += '<p>✅ MAC vendor: ' + (firstAttack.mac.vendor || 'Unknown') + '</p>';
+                        results.innerHTML += '<p>✅ MAC type: ' + (firstAttack.mac.isLocal ? 'Local' : 'Global') + '</p>';
+                    } else {
+                        results.innerHTML += '<p>❌ No MAC address found in attack data</p>';
+                    }
+                } else {
+                    results.innerHTML += '<p>⚠️ No attack data found</p>';
+                }
+            } else {
+                results.innerHTML += '<p>❌ BYJ_DEMO_POINTS global variable not found</p>';
+            }
+            
+            // Test MAC address utilities
+            if (typeof window.MacAddressUtils !== 'undefined') {
+                results.innerHTML += '<p>✅ MacAddressUtils found</p>';
+            } else {
+                results.innerHTML += '<p>❌ MacAddressUtils not found</p>';
+            }
+        }
+        
+        // Run test after a short delay
+        setTimeout(testMacAddressFeatures, 2000);
+    </script>
+    
+    <p>This page tests if the MAC address features are working in the Big Yellow Jacket application.</p>
+    <p>Make sure to visit <a href="/app/attacks">/app/attacks</a> first to generate some attack data.</p>
+</body>
+</html>

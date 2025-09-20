@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Lock, Unlock, AlertTriangle, CheckCircle, XCircle, Zap } from 'lucide-react';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../services/websocket';
 
 interface PortInfo {
   port: number;

@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { useWebSocketStore } from './useWebSocket';
+import { useWebSocket } from './useWebSocket';
 import { apiService, AlertData, ThreatData, ConnectionData, SystemMetrics } from '../services/api';
 
 export interface RealtimeDataState {
@@ -57,7 +57,7 @@ export const useRealtimeData = (): RealtimeDataState & RealtimeDataActions => {
     alerts: wsAlerts,
     blockedIPs: wsBlockedIPs,
     send
-  } = useWebSocketStore();
+  } = useWebSocket();
 
   const [state, setState] = useState<RealtimeDataState>({
     systemMetrics: null,

@@ -1,4 +1,4 @@
-// src/hooks/useWebSocket.ts
+// src/services/websocket.ts
 
 import { useEffect } from 'react';
 import { create } from 'zustand';
@@ -229,7 +229,7 @@ const INITIAL_METRICS: Metrics = {
   }
 };
 
-const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) => {
+const useWebSocket = create<WebSocketState & WebSocketActions>((set, get) => {
   const initialAutoReconnect = getStoredAutoReconnect();
   console.log('🚀 Initializing WebSocket store with autoReconnect:', initialAutoReconnect);
   
@@ -839,7 +839,7 @@ const useWebSocketStore = create<WebSocketState & WebSocketActions>((set, get) =
 }});
 
 export const useWebSocket = () => {
-  const store = useWebSocketStore();
+  const store = useWebSocket();
   
   // Aggressive anti-refresh protection
   useEffect(() => {
@@ -862,7 +862,7 @@ export const useWebSocket = () => {
     // More defensive state checking
     const initTimeout = setTimeout(() => {
       try {
-        const currentState = useWebSocketStore.getState();
+        const currentState = useWebSocket.getState();
         const shouldConnect = (
           !currentState.connected && 
           !currentState.socket && 
@@ -904,7 +904,7 @@ if (typeof window !== 'undefined') {
   };
   
   (window as any).debugWebSocket = () => {
-    const store = useWebSocketStore.getState();
+    const store = useWebSocket.getState();
     console.log('🔍 WebSocket Debug Info:');
     console.log('  - Connected:', store.connected);
     console.log('  - Socket:', store.socket);
@@ -918,13 +918,13 @@ if (typeof window !== 'undefined') {
   };
   
   (window as any).forceConnect = () => {
-    const store = useWebSocketStore.getState();
+    const store = useWebSocket.getState();
     console.log('🔄 Forcing connection...');
     store.forceReconnect();
   };
 }
 
-export { useWebSocketStore };
+export { useWebSocket };
 
 // Note: WebSocket initialization is now handled only by useWebSocket hook to prevent race conditions
 // This ensures stable connection management and prevents multiple simultaneous connection attempts

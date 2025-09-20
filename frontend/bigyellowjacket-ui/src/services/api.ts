@@ -1,106 +1,30 @@
 /**
- * API Service Layer for Big Yellow Jacket Security Platform
- * Comprehensive service for communicating with the backend REST API
+ * Enhanced API Service Layer for Big Yellow Jacket Security Platform
+ * Comprehensive service with MAC address support and robust error handling
  */
 
-export interface ApiResponse<T = any> {
-  data?: T;
-  error?: string;
-  success?: boolean;
-  message?: string;
-}
+import { 
+  ApiResponse, 
+  SystemMetrics, 
+  ThreatData, 
+  AlertData, 
+  ConnectionData, 
+  DashboardOverview,
+  LoginAttempt,
+  LoginStats,
+  MacAddress,
+  MacAddressUtils,
+  Severity,
+  Status,
+  Protocol
+} from '../models/datatypes';
 
-export interface SystemMetrics {
-  cpu_usage: number;
-  memory_usage: number;
-  disk_usage: number;
-  network_io: number;
-  active_connections: number;
-  threats_detected: number;
-  alerts_active: number;
-  timestamp: string;
-}
-
-export interface ThreatData {
-  id: string;
-  ip: string;
-  type: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  timestamp: string;
-  description: string;
-  source_ip?: string;
-  target_ip?: string;
-  metadata?: Record<string, any>;
-}
-
-export interface AlertData {
-  id: string;
-  type: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  title: string;
-  description: string;
-  source_ip?: string;
-  target_ip?: string;
-  status: 'active' | 'acknowledged' | 'resolved';
-  created_at: string;
-  updated_at: string;
-  metadata?: Record<string, any>;
-}
-
-export interface ConnectionData {
-  id: string;
-  src_ip: string;
-  dst_ip: string;
-  src_port: number;
-  dst_port: number;
-  protocol: string;
-  status: string;
-  bytes_sent: number;
-  bytes_received: number;
-  timestamp: string;
-}
-
-export interface DashboardOverview {
-  system_metrics: {
-    cpu: number;
-    memory: number;
-    disk: number;
-    network: number;
-  };
-  threat_summary: any;
-  alert_summary: any;
-  connection_stats: {
-    total: number;
-    active: number;
-    blocked: number;
-  };
-  timestamp: string;
-}
-
-export interface LoginAttempt {
-  timestamp: string;
-  username: string;
-  success: boolean;
-  ip: string;
-  user_agent: string;
-}
-
-export interface LoginStats {
-  buckets: Array<{
-    time: string;
-    success: number;
-    failed: number;
-  }>;
-  totals: {
-    total: number;
-    success: number;
-    failed: number;
-  };
-  risk: 'normal' | 'elevated' | 'critical';
-}
+// Enhanced API service with better error handling and retry logic
 
 class ApiService {
   private baseUrl: string;
+  private retryAttempts: number = 3;
+  private retryDelay: number = 1000; // 1 second
 
   constructor() {
     // Determine API base URL based on environment
@@ -110,39 +34,144 @@ class ApiService {
       : 'https://bigyellowjacket.com:8443/api';
   }
 
+  private async sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   private async request<T>(
     endpoint: string, 
-    options: RequestInit = {}
+    options: RequestInit = {},
+    retryCount: number = 0
   ): Promise<ApiResponse<T>> {
     try {
       const url = `${this.baseUrl}${endpoint}`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       const response = await fetch(url, {
         headers: {
           'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
           ...options.headers,
         },
+        signal: controller.signal,
         ...options,
       });
 
-      const data = await response.json();
+      clearTimeout(timeoutId);
+
+      // Handle different response types
+      let data: any;
+      const contentType = response.headers.get('content-type');
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
 
       if (!response.ok) {
+        const errorMessage = data?.error || data?.message || `HTTP ${response.status}: ${response.statusText}`;
+        
+        // Retry on certain error codes
+        if (this.shouldRetry(response.status) && retryCount < this.retryAttempts) {
+          console.log(`🔄 Retrying request (${retryCount + 1}/${this.retryAttempts}): ${endpoint}`);
+          await this.sleep(this.retryDelay * Math.pow(2, retryCount)); // Exponential backoff
+          return this.request<T>(endpoint, options, retryCount + 1);
+        }
+
         return {
-          error: data.error || `HTTP ${response.status}: ${response.statusText}`,
+          error: errorMessage,
           success: false,
+          timestamp: new Date().toISOString(),
         };
       }
 
       return {
         data,
         success: true,
+        timestamp: new Date().toISOString(),
       };
     } catch (error) {
+      // Retry on network errors
+      if (this.isNetworkError(error) && retryCount < this.retryAttempts) {
+        console.log(`🔄 Retrying request due to network error (${retryCount + 1}/${this.retryAttempts}): ${endpoint}`);
+        await this.sleep(this.retryDelay * Math.pow(2, retryCount));
+        return this.request<T>(endpoint, options, retryCount + 1);
+      }
+
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      console.error(`API request failed: ${endpoint}`, error);
+      
       return {
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: errorMessage,
         success: false,
+        timestamp: new Date().toISOString(),
       };
     }
+  }
+
+  private shouldRetry(statusCode: number): boolean {
+    // Retry on server errors and rate limiting
+    return statusCode >= 500 || statusCode === 429;
+  }
+
+  private isNetworkError(error: any): boolean {
+    return error instanceof TypeError && error.message.includes('fetch') ||
+           error.name === 'AbortError' ||
+           error.message.includes('network') ||
+           error.message.includes('timeout');
+  }
+
+  // Helper method to enhance data with MAC addresses
+  private enhanceConnectionData(connection: any): ConnectionData {
+    return {
+      id: connection.id || `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      src_ip: connection.src_ip || connection.source_ip || '0.0.0.0',
+      dst_ip: connection.dst_ip || connection.destination_ip || '0.0.0.0',
+      src_port: connection.src_port || connection.source_port || 0,
+      dst_port: connection.dst_port || connection.destination_port || 0,
+      src_mac: connection.src_mac ? MacAddressUtils.create(connection.src_mac) : undefined,
+      dst_mac: connection.dst_mac ? MacAddressUtils.create(connection.dst_mac) : undefined,
+      protocol: (connection.protocol as Protocol) || 'TCP',
+      status: (connection.status as Status) || 'active',
+      bytes_sent: connection.bytes_sent || 0,
+      bytes_received: connection.bytes_received || 0,
+      packets_sent: connection.packets_sent || 0,
+      packets_received: connection.packets_received || 0,
+      latency: connection.latency || 0,
+      timestamp: connection.timestamp || new Date().toISOString(),
+      last_seen: connection.last_seen || new Date().toISOString(),
+      process: connection.process,
+      network_interface: connection.network_interface,
+      vlan_id: connection.vlan_id,
+      connection_duration: connection.connection_duration || 0,
+      flags: connection.flags
+    };
+  }
+
+  private enhanceThreatData(threat: any): ThreatData {
+    return {
+      id: threat.id || `threat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      ip: threat.ip || '0.0.0.0',
+      mac: threat.mac ? MacAddressUtils.create(threat.mac) : undefined,
+      type: threat.type || 'Unknown',
+      severity: (threat.severity as Severity) || 'medium',
+      timestamp: threat.timestamp || new Date().toISOString(),
+      description: threat.description || 'No description available',
+      source_ip: threat.source_ip,
+      source_mac: threat.source_mac ? MacAddressUtils.create(threat.source_mac) : undefined,
+      target_ip: threat.target_ip,
+      target_mac: threat.target_mac ? MacAddressUtils.create(threat.target_mac) : undefined,
+      port: threat.port,
+      protocol: threat.protocol as Protocol,
+      attack_vector: threat.attack_vector || 'unknown',
+      confidence_score: threat.confidence_score || 50,
+      false_positive_probability: threat.false_positive_probability || 0,
+      metadata: threat.metadata || {},
+      geo_location: threat.geo_location,
+      network_context: threat.network_context
+    };
   }
 
   // System endpoints
@@ -160,7 +189,14 @@ class ApiService {
 
   // Threat detection endpoints
   async getThreats(): Promise<ApiResponse<ThreatData[]>> {
-    return this.request<ThreatData[]>('/threats');
+    const response = await this.request<any[]>('/threats');
+    if (response.success && response.data) {
+      return {
+        ...response,
+        data: response.data.map(threat => this.enhanceThreatData(threat))
+      };
+    }
+    return response;
   }
 
   async getThreatSummary(): Promise<ApiResponse> {
@@ -235,7 +271,14 @@ class ApiService {
 
   // Network monitoring endpoints
   async getConnections(): Promise<ApiResponse<ConnectionData[]>> {
-    return this.request<ConnectionData[]>('/connections');
+    const response = await this.request<any[]>('/connections');
+    if (response.success && response.data) {
+      return {
+        ...response,
+        data: response.data.map(conn => this.enhanceConnectionData(conn))
+      };
+    }
+    return response;
   }
 
   async getConnectionStats(): Promise<ApiResponse> {

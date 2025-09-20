@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Activity, Globe, Cpu, Lock, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area, BarChart, Bar } from 'recharts';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../services/websocket';
 import { formatBytes } from '../../utils/formatBytes';
 import AlertCard from './AlertCard';
 

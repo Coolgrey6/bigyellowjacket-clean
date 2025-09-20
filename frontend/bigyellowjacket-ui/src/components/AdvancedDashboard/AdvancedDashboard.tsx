@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
          BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../services/websocket';
 import './AdvancedDashboard.css';
 
 interface DashboardData {

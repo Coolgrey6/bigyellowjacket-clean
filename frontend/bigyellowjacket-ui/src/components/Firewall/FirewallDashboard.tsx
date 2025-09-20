@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Lock, Unlock, AlertTriangle, Activity, Eye, EyeOff, Zap, Globe, Users, Clock } from 'lucide-react';
-import { useWebSocketStore } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../services/websocket';
 
 interface FirewallStats {
   totalBlocked: number;
@@ -11,7 +11,7 @@ interface FirewallStats {
 }
 
 export const FirewallDashboard: React.FC = () => {
-  const { connected, send, blockedIPs, connections } = useWebSocketStore();
+  const { connected, send, blockedIPs, connections } = useWebSocket();
   const [firewallEnabled, setFirewallEnabled] = useState(true);
   const [autoBlock, setAutoBlock] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);

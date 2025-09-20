@@ -1,12 +1,12 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { useWebSocketStore } from '../../hooks/useWebSocket';
+import { useWebSocket } from '../../services/websocket';
 import { MailingList } from '../MailingList/MailingList';
 import './Homepage.css';
 import BeeFlock from './BeeFlock';
 
 export const Homepage: React.FC = () => {
-  const { isAuthenticated } = useWebSocketStore();
+  const { isAuthenticated } = useWebSocket();
   return (
     <div className="homepage">
       {/* Hero Section */}

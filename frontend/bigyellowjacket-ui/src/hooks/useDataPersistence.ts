@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useCallback } from 'react';
-import { useWebSocketStore } from './useWebSocket';
+import { useWebSocket } from './useWebSocket';
 
 interface PersistedData {
   // User preferences
@@ -65,7 +65,7 @@ const DEFAULT_DATA: PersistedData = {
 const STORAGE_KEY = 'byj_user_preferences';
 
 export const useDataPersistence = () => {
-  const { isAuthenticated } = useWebSocketStore();
+  const { isAuthenticated } = useWebSocket();
 
   // Load data from localStorage
   const loadPersistedData = useCallback((): PersistedData => {
