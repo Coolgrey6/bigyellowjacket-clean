@@ -19,6 +19,11 @@ L.Icon.Default.mergeOptions({
   shadowUrl: markerShadow,
 });
 
+// Global popup control to ensure only intentional closes happen
+let currentOpenMarkerId: string | null = null;
+let allowedCloseMarkerId: string | null = null;
+let currentOpenMarkerRef: L.Marker | null = null;
+
 type AttackPoint = {
   lat: number;
   lon: number;
@@ -58,6 +63,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   const [autoAdvance, setAutoAdvance] = useState(true); // Auto-advance to new attacks
   const [isMapPaused, setIsMapPaused] = useState(false); // Track if map is manually paused
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastAutoMoveRef = useRef<number>(0); // Throttle auto-follow map moves
+  const autoMoveCooldownMs = 3000; // Minimum pause between auto moves
 
   // Map tile layer options
   const getTileLayer = (viewType: string) => {
@@ -226,7 +233,9 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
         }
         
         // If autoAdvance is enabled, move to new attacks ONLY if no popup is open and map is not paused
-        if (autoAdvance && !isPopupOpen && !isMapPaused) {
+        const now = Date.now();
+        const canAutoMove = now - (lastAutoMoveRef.current || 0) > autoMoveCooldownMs;
+        if (autoAdvance && !isPopupOpen && !isMapPaused && canAutoMove) {
           console.log('🔄 Auto-advance enabled - moving to new attack:', {
             lat: newAttack.lat,
             lon: newAttack.lon,
@@ -241,6 +250,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
             if (!isMapPaused) {
               setForceFollow(true);
               setTimeout(() => setForceFollow(false), 1000);
+              // Record last auto move time to throttle further moves
+              lastAutoMoveRef.current = Date.now();
             } else {
               console.log('🚫 Skipping forceFollow - map was paused during timeout');
             }
@@ -316,10 +327,15 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   // Update filtered attacks when allAttacks or timeSliderValue changes
   useEffect(() => {
     if (allAttacks.length > 0) {
+      // Do not update markers/filtered list while a popup is open to avoid remounts that close it
+      if (isPopupOpen) {
+        console.log('⏸️ Skipping marker updates because a popup is open');
+        return;
+      }
       const filtered = filterAttacksByTime(allAttacks, timeSliderValue);
       setFilteredAttacks(filtered);
       setMarkers(filtered);
-      setMarkerKey(prev => prev + 1); // Force marker re-render
+      setMarkerKey(prev => prev + 1);
       
       // Debug: Log marker updates
       console.log('Markers updated:', {
@@ -348,7 +364,7 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
       //   focusOnCurrentMarker();
       // }, 100);
     }
-  }, [allAttacks, timeSliderValue]);
+  }, [allAttacks, timeSliderValue, isPopupOpen]);
 
   // Auto-update time slider to show latest attacks when new ones arrive
   useEffect(() => {
@@ -434,6 +450,11 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
   // Handle time slider change
   const handleTimeSliderChange = (value: number) => {
     setTimeSliderValue(value);
+    // Avoid updating markers while a popup is open to keep it visible
+    if (isPopupOpen) {
+      console.log('⏸️ Skipping marker updates on slider change because a popup is open');
+      return;
+    }
     const filtered = filterAttacksByTime(allAttacks, value);
     setFilteredAttacks(filtered);
     setMarkers(filtered);
@@ -579,11 +600,17 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           followLatest,
           isPopupOpen
         });
-        
+        // Throttle map movements to give users time to click
+        const now = Date.now();
+        if (now - (lastAutoMoveRef.current || 0) < autoMoveCooldownMs) {
+          console.log('⏸️ Skipping map flyTo due to cooldown');
+          return;
+        }
         map.flyTo([currentMarker.lat, currentMarker.lon], 12, {
-          duration: 1.0,
-          easeLinearity: 0.25
+          duration: 1.5,
+          easeLinearity: 0.2
         });
+        lastAutoMoveRef.current = now;
         console.log('✅ Map moved to marker');
       } else {
         console.log('❌ No filtered attacks to focus on');
@@ -593,8 +620,74 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     return null;
   };
 
-  const AttackMarkerInner: React.FC<{ p: AttackPoint; icon: L.DivIcon; isLatest?: boolean; isMapPaused?: boolean }> = ({ p, icon, isLatest = false, isMapPaused = false }) => {
+  const AttackMarkerInner: React.FC<{ p: AttackPoint; isLatest?: boolean; isMapPaused?: boolean; freezeIcon?: boolean; color: string }> = ({ p, isLatest = false, isMapPaused = false, freezeIcon = false, color }) => {
     const map = useMap();
+    const markerRef = useRef<L.Marker | null>(null);
+    const allowPopupCloseRef = useRef<boolean>(false);
+    const hoverCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const markerId = `${p.ip || 'unknown'}-${p.lat}-${p.lon}`;
+    const prevIconRef = useRef<L.DivIcon | null>(null);
+    const computedIcon = useMemo(() => {
+      // If we need to freeze the icon (to keep popup open), reuse the previous icon instance
+      if (freezeIcon && prevIconRef.current) {
+        return prevIconRef.current;
+      }
+      // Visible dot size
+      const markerSize = isLatest ? 30 : 20;
+      const borderWidth = isLatest ? 4 : 2;
+      const fontSize = isLatest ? 16 : 12;
+      const shadowIntensity = isLatest ? '0 4px 8px rgba(0,0,0,0.4)' : '0 2px 4px rgba(0,0,0,0.3)';
+      // Larger hit area for mouse interactions
+      const hitSize = isLatest ? 48 : 36;
+      const newIcon = L.divIcon({
+        className: `byj-simple-marker ${isLatest ? 'latest-marker' : ''}`,
+        html: `<div style="
+              width: ${hitSize}px; 
+              height: ${hitSize}px; 
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              border-radius: 50%;
+              cursor: pointer;
+              position: relative;
+            ">
+              <div style="
+                width: ${markerSize}px; 
+                height: ${markerSize}px; 
+                background: ${color}; 
+                border-radius: 50%; 
+                border: ${borderWidth}px solid white; 
+                box-shadow: ${shadowIntensity};
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: white;
+                font-weight: bold;
+                font-size: ${fontSize}px;
+                animation: ${isLatest ? 'pulse 2s infinite' : 'none'};
+              ">×</div>
+            ${isLatest ? `<div style="
+              position: absolute;
+              top: -25px;
+              left: 50%;
+              transform: translateX(-50%);
+              background: #ff6b6b;
+              color: white;
+              padding: 2px 6px;
+              border-radius: 10px;
+              font-size: 10px;
+              font-weight: bold;
+              white-space: nowrap;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+              animation: pulse 2s infinite;
+            ">LATEST</div>` : ''}
+            </div>`,
+        iconSize: [hitSize, hitSize],
+        iconAnchor: [hitSize/2, hitSize/2],
+      });
+      prevIconRef.current = newIcon;
+      return newIcon;
+    }, [freezeIcon, isLatest, color]);
     
     // Debug: Log marker component rendering
     console.log(`AttackMarkerInner rendering:`, {
@@ -648,6 +741,40 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
       }
     };
 
+    const onMouseOver = () => {
+      try {
+        console.log('🖱️ Mouse over marker:', p.ip);
+        // If another marker popup is open, close it intentionally
+        if (currentOpenMarkerId && currentOpenMarkerId !== markerId) {
+          console.log('🔁 Switching popup from', currentOpenMarkerId, 'to', markerId);
+          allowedCloseMarkerId = currentOpenMarkerId;
+          try { currentOpenMarkerRef?.closePopup(); } catch {}
+        }
+        allowPopupCloseRef.current = false;
+        markerRef.current?.openPopup();
+        currentOpenMarkerId = markerId;
+        currentOpenMarkerRef = markerRef.current;
+        allowedCloseMarkerId = null;
+        setIsPopupOpen(true);
+        setCurrentPopupMarker(p);
+      } catch (e) {
+        console.warn('Mouse over error:', e);
+      }
+    };
+
+    const onMouseOut = () => {
+      try {
+        console.log('🖱️ Mouse out marker:', p.ip);
+        // Do not close on mouse out; popup should persist until another marker is hovered
+        if (hoverCloseTimerRef.current) {
+          clearTimeout(hoverCloseTimerRef.current);
+          hoverCloseTimerRef.current = null;
+        }
+      } catch (e) {
+        console.warn('Mouse out error:', e);
+      }
+    };
+
     // Use useCallback to prevent recreation on every render
     const onPopupOpen = useCallback(() => {
       try {
@@ -694,16 +821,27 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
       try {
         console.log('📋 Popup close attempt detected for:', p.lat, p.lon, p.ip);
         console.log('📋 Current state:', { isPopupOpen, isMapPaused, isPlaying, pausedByMarker });
-        console.log('📋 Stack trace:', new Error().stack);
-        console.log('🚫 Popup close blocked - popup stays open permanently');
-        
-        // Do nothing - popup should stay open permanently
-        // This prevents any automatic closing behavior
-        return;
+        // Only allow close if this marker has been explicitly allowed (when switching markers)
+        if (allowPopupCloseRef.current || allowedCloseMarkerId === markerId) {
+          console.log('✅ Allowing popup close');
+          if (currentOpenMarkerId === markerId) {
+            currentOpenMarkerId = null;
+            currentOpenMarkerRef = null;
+            allowedCloseMarkerId = null;
+            setIsPopupOpen(false);
+            setCurrentPopupMarker(null);
+          }
+          return;
+        }
+        console.log('🚫 Preventing unintended popup close - reopening');
+        // Reopen if not an allowed close
+        setTimeout(() => {
+          try { markerRef.current?.openPopup(); } catch (e) {}
+        }, 0);
       } catch (error) {
         console.error('Error handling popup close:', error);
       }
-    }, [p.lat, p.lon, p.ip, isPopupOpen, isMapPaused, isPlaying, pausedByMarker]);
+    }, [p.lat, p.lon, p.ip, isPopupOpen, isMapPaused, isPlaying, pausedByMarker, markerId]);
     const spoof = isPointInCountry(p.lat, p.lon, p.country);
     
     // Check for spoofing and auto-block if detected (with delay)
@@ -719,14 +857,15 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
     const kartaview = `https://kartaview.org/map/@${p.lat},${p.lon},17z`;
     const mapillary = `https://www.mapillary.com/app/?lat=${p.lat}&lng=${p.lon}&z=17`;
     const osm = `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lon}#map=17/${p.lat}/${p.lon}`;
-    console.log('🎯 Rendering marker for:', p.lat, p.lon, p.ip, 'with icon:', icon);
+    console.log('🎯 Rendering marker for:', p.lat, p.lon, p.ip, 'with icon:', computedIcon);
     
     return (
       <Marker 
         key={`marker-${p.ip}-${p.lat}-${p.lon}`}
         position={[p.lat, p.lon]} 
-        icon={icon} 
-        eventHandlers={{ click: onClick, popupopen: onPopupOpen, popupclose: onPopupClose }}
+        icon={computedIcon} 
+        ref={(m) => { markerRef.current = m as any; }}
+        eventHandlers={{ click: onClick, popupopen: onPopupOpen, popupclose: onPopupClose, mouseover: onMouseOver, mouseout: onMouseOut }}
         data-marker-ip={p.ip}
       >
         <Popup 
@@ -737,10 +876,7 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           keepInView={false}
           closeOnClick={false}
           closeOnEscapeKey={false}
-          onClose={() => {
-            console.log('🚫 Popup onClose triggered - blocking');
-            return false; // Prevent closing
-          }}
+          // Allow popup to close via explicit logic; default onClose not overridden
         >
           <div className="byj-popup">
             <div className="byj-popup-title">
@@ -750,12 +886,8 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
                 className="popup-close-button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  console.log('🔴 Manual popup close requested');
-                  setPausedByMarker(false);
-                  setIsPopupOpen(false);
-                  setCurrentPopupMarker(null);
-                  // Don't try to click the marker - just update state
-                  console.log('✅ Popup closed manually');
+                  // Ignore manual close; popups persist until another marker is hovered
+                  console.log('🔴 Manual popup close ignored - popup persists until another marker hover');
                 }}
                 title="Close popup"
               >
@@ -1281,6 +1413,45 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
         </div>
       )}
 
+      {/* Always-visible controls (outside timeline UI) */}
+      <div style={{ position: 'absolute', top: 12, right: 12, zIndex: 1000, display: 'flex', gap: 8 }}>
+        <button 
+          onClick={() => {
+            // Toggle follow latest and move immediately
+            const newFollowLatest = !followLatest;
+            setFollowLatest(newFollowLatest);
+            // Close any open popup when enabling follow for clean movement
+            if (newFollowLatest) {
+              setIsPopupOpen(false);
+              setPausedByMarker(false);
+              setIsPlaying(true);
+              // Force an immediate movement to the latest marker
+              setTimeout(() => {
+                focusOnCurrentMarker(true);
+              }, 50);
+            }
+          }}
+          className={`follow-latest-button ${followLatest ? 'active' : ''}`}
+          title={followLatest ? 'Stop Following Latest Marker' : 'Follow Latest Marker'}
+        >
+          {followLatest ? '📍 Following' : '📍 Follow Latest'}
+        </button>
+
+        <button 
+          onClick={() => {
+            const newPauseState = !isMapPaused;
+            setIsMapPaused(newPauseState);
+            if (newPauseState) {
+              stopPlayback();
+            }
+          }}
+          className={`pause-map-button ${isMapPaused ? 'paused' : 'active'}`}
+          title={isMapPaused ? 'Resume map movement and timeline' : 'Pause all map movement and timeline'}
+        >
+          {isMapPaused ? '⏸️ Map Paused' : '▶️ Map Active'}
+        </button>
+      </div>
+
       <MapContainer center={defaultCenter} zoom={5} style={{ height: isTimelineMinimized ? '100vh' : 'calc(100vh - 350px)', width: '100%' }}>
         <TileLayer
           attribution={getTileLayer(mapViewType).attribution}
@@ -1317,60 +1488,11 @@ export const MapView: React.FC<MapViewProps> = ({ points }) => {
           const color = colorBySeverity[(p.severity || '').toLowerCase()] || '#dc2626';
           // Create marker with different sizes for latest vs others
           const isLatest = idx === 0; // First marker is the latest
-          const markerSize = isLatest ? 30 : 20;
-          const borderWidth = isLatest ? 4 : 2;
-          const fontSize = isLatest ? 16 : 12;
-          const shadowIntensity = isLatest ? '0 4px 8px rgba(0,0,0,0.4)' : '0 2px 4px rgba(0,0,0,0.3)';
-          
-          const icon = L.divIcon({
-            className: `byj-simple-marker ${isLatest ? 'latest-marker' : ''}`,
-            html: `<div style="
-              width: ${markerSize}px; 
-              height: ${markerSize}px; 
-              background: ${color}; 
-              border-radius: 50%; 
-              border: ${borderWidth}px solid white; 
-              box-shadow: ${shadowIntensity};
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              color: white;
-              font-weight: bold;
-              font-size: ${fontSize}px;
-              cursor: pointer;
-              position: relative;
-              animation: ${isLatest ? 'pulse 2s infinite' : 'none'};
-            ">×</div>
-            ${isLatest ? `<div style="
-              position: absolute;
-              top: -25px;
-              left: 50%;
-              transform: translateX(-50%);
-              background: #ff6b6b;
-              color: white;
-              padding: 2px 6px;
-              border-radius: 10px;
-              font-size: 10px;
-              font-weight: bold;
-              white-space: nowrap;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-              animation: pulse 2s infinite;
-            ">LATEST</div>` : ''}`,
-            iconSize: [markerSize, markerSize],
-            iconAnchor: [markerSize/2, markerSize/2],
-          });
-          
-          // Debug: Log icon creation
-          console.log(`Created icon for marker ${idx}:`, {
-            color,
-            isLatest,
-            className: `byj-attack-icon-wrapper ${isLatest ? 'pulsating' : ''}`,
-            iconSize: [20, 20],
-            iconAnchor: [10, 10]
-          });
           // Use markerKey to force re-rendering when markers change
-          const uniqueKey = `${markerKey}-${p.lat}-${p.lon}-${p.timestamp || Date.now()}-${idx}`;
-          return <AttackMarkerInner key={uniqueKey} p={p} icon={icon} isLatest={isLatest} isMapPaused={isMapPaused} />;
+          // Use a stable key while a popup is open to prevent remounting which closes the popup
+          const stablePart = `${p.ip || 'unknown'}-${p.lat}-${p.lon}-${p.timestamp || ''}-${idx}`;
+          const uniqueKey = isPopupOpen ? stablePart : `${markerKey}-${stablePart}`;
+          return <AttackMarkerInner key={uniqueKey} p={p} isLatest={isLatest} isMapPaused={isMapPaused} freezeIcon={isPopupOpen} color={color} />;
         })}
       </MapContainer>
     </div>
