@@ -199,7 +199,7 @@ bigyellowjacket-security/
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+We welcome contributions!
 
 ### **Development Setup**
 1. Fork the repository
@@ -222,14 +222,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 **Donnie Bugden**
 - Project Creator and Lead Developer
-- Email: [your-email@example.com]
-- GitHub: [@yourusername]
+- Email: [donald.m.bugden@gmail.com]
+- GitHub: [@Coolgrey6]
 
-## 📞 Support
-
-- **Documentation**: [Wiki](https://github.com/yourusername/bigyellowjacket-security/wiki)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/bigyellowjacket-security/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/bigyellowjacket-security/discussions)
 
 ---
 
